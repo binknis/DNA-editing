@@ -1,0 +1,1 @@
+getBestParams.pl and getParams.pm work well but aren't needed because - getBestClustStatLines replaces it (for the main use). 

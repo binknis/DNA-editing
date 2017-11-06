@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/levanonlab/!svn/ver/45/binknis/Perl_DNAE/analysis_scripts/archive
+END
+createTrackFiles_beforeFilterAddition.pl
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/svn/levanonlab/!svn/ver/45/binknis/Perl_DNAE/analysis_scripts/archive/createTrackFiles_beforeFilterAddition.pl
+END
+README.txt
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/levanonlab/!svn/ver/45/binknis/Perl_DNAE/analysis_scripts/archive/README.txt
+END
+getBestParams.pl
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/svn/levanonlab/!svn/ver/45/binknis/Perl_DNAE/analysis_scripts/archive/getBestParams.pl
+END
+getParams.pm
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/svn/levanonlab/!svn/ver/45/binknis/Perl_DNAE/analysis_scripts/archive/getParams.pm
+END

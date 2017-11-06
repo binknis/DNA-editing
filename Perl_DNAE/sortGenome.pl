@@ -15,6 +15,10 @@
 # a. Specific Classes to sort can be sent as arguments (in the past they were read from classes_to_sort.txt)
 # b. If no class arguments are sent, then all non-existant classes will be sorted. 
 #NOTE: lower case flag added; it can be skipped; Default: converts to lower case. 
+
+#Late edits (Starting Nov 2017): 
+#1. Added $data_dir param
+
 use strict; 
 use File::Path qw(mkpath);
 use Bio::SeqIO;
@@ -27,7 +31,7 @@ system("ulimit -Sn 4096"); #set the file limit to 4096, so that it doesn't fail 
 
 my $USE_FAM_AS_NAME = 1; #output all seqs of same fam into one file
 
-( my $seqDataFile, my $seqFile, my $organism, my $lc, my @classes) = (shift, shift, shift, @ARGV);
+( my $seqDataFile, my $seqFile, my $data_dir, my $organism, my $lc, my @classes) = (shift, shift, shift, @ARGV);
 
 #to enable skipping the lower-case flag
 if ($lc =~ /(DNA|LINE|LTR|Other|RC|RNA|rRNA|scRNA|SINE|snRNA|srpRNA|tRNA|Unknown)/){
@@ -55,7 +59,7 @@ if (@classes){
 }
 #get Class names which have been sorted
 my @sortedClassesList = (); 
-my $classDir = "../Data/" . $organism; 
+my $classDir = "$data_dir/" . $organism; 
 if (-e $classDir){
 	opendir(CLASSES, $classDir) || print "$classDir didn't open\n";
 	@sortedClassesList = sort{lc($a) cmp lc($b)}(readdir(CLASSES));
@@ -116,18 +120,18 @@ my %seqOut = ();
 my %hist = ();
 
 for $class (keys %familyTree){
-	mkpath "../Data/$organism/$class/results";  #create results directory
+	mkpath "$data_dir/$organism/$class/results";  #create results directory
 	for $family (keys %{$familyTree{$class}}){
 		#create directories, files and stream for Name
 		for $name (keys %{$familyTree{$class}{$family}}){
 			#create directories and sequence files 
-			unless (-e "../Data/$organism/$class/db/files_$family/Seq_$name"){
-				mkpath "../Data/$organism/$class/db/files_$family"; 
+			unless (-e "$data_dir/$organism/$class/db/files_$family/Seq_$name"){
+				mkpath "$data_dir/$organism/$class/db/files_$family"; 
 			}
 			#create, per name: 1. sequence-writing-streams, 2. Nucleotide histograms, 3. sum of all nucleotides in the name's sequences 
 			my $newTaxa = "$class=$family=$name"; 
 			unless(exists $seqOut{$newTaxa}){
-				my $path = ">../Data/$organism/$class/db/files_$family/Seq_$name"; 
+				my $path = ">$data_dir/$organism/$class/db/files_$family/Seq_$name"; 
 				$seqOut{$newTaxa} = Bio::SeqIO->new( -file => $path,  -format => 'fasta' );
 				$hist{$newTaxa} = [ 0, 0, 0, 0 ];
 			}	
@@ -193,9 +197,9 @@ close($db_in_handle);
 for $class (keys %familyTree){
 	for $family (keys %{$familyTree{$class}}){
 		#create family-files
-		my $nuc_stats_name = ">../Data/$organism/$class/db/Nuc_$family.txt";
-		my $seq_len_name = ">../Data/$organism/$class/db/Len_$family.txt";
-		my $seq_lenStats_name = ">../Data/$organism/$class/db/LenStats_$family.txt";
+		my $nuc_stats_name = ">$data_dir/$organism/$class/db/Nuc_$family.txt";
+		my $seq_len_name = ">$data_dir/$organism/$class/db/Len_$family.txt";
+		my $seq_lenStats_name = ">$data_dir/$organism/$class/db/LenStats_$family.txt";
 		
 			open( my $nuc_stats_handle, $nuc_stats_name );  
 			open( my $seq_len_handle, $seq_len_name );  

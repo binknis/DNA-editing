@@ -14,20 +14,51 @@
  use IO::Uncompress::Gunzip qw(gunzip);
  use AnalyzeBlastByLength; 
  
+#Command line parameter default values
+my $dataDir = "../Data"
+my $organism = '';
+my $pval_h = 2;
+my $pval_l = 5;
+my $th_l = 4;
+my $th_h = 5;
+my $cores = 12;
+my $allMMs = 1;
+my $tabular = 1;
+my @classes = (); 
+ 
+ GetOptions ("dataDir=s"  => \$dataDir,
+	"organism|org=s" => \$organism,
+	"pval_h=s" => \$pval_h,
+	"pval_l=s" => \$pval_l,
+	"th_l=i" => \$th_l,
+	"th_h=i" => \$th_h,
+	"cores=i" => \$cores,
+	"allmms!" => \$allMMs,
+	"tabular!" => \$tabular,
+	
+	"classes=s" => \@classes)
+or die("Error in command line arguments\n");
+ 
+@classes = sort(split(/,/,join(',',@classes))); #allow comma-separated list
+ 
+ my %args = ();
+ $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs; $args{"tabular"} = $tabular;
+ 
  ######################
  #######  MAIN   ######
  ######################
-my $num_to_splice = 7; 
-(my $organism, my $pval_h, my $pval_l, my $th_l, my $th_h, my $cores, my $allMMs, my $tabular) = splice(@ARGV,0,$num_to_splice);
-my @argClasses = @ARGV;
-if ($allMMs ne '0' && $allMMs ne '1'){ #no $allMMs inputed, rather a class was accidently extracted from ARGV list
-	push (@argClasses, $allMMs); 
-	$allMMs = 1; #DEFAULT - check all mismatches
-}
-if ($tabular ne '0' && $tabular ne '1'){ #no $tabular inputed, rather a class was accidently extracted from ARGV list
-	push (@argClasses, $tabular); 
-	$tabular = 1; #DEFAULT - print in tabular output & each file in mismatch-specific subdir
-}
+# my $num_to_splice = 7; 
+# (my $organism, my $pval_h, my $pval_l, my $th_l, my $th_h, my $cores, my $allMMs, my $tabular) = splice(@ARGV,0,$num_to_splice);
+# my @argClasses = @ARGV;
+# if ($allMMs ne '0' && $allMMs ne '1'){ #no $allMMs inputed, rather a class was accidently extracted from ARGV list
+	# push (@argClasses, $allMMs); 
+	# $allMMs = 1; #DEFAULT - check all mismatches
+# }
+# if ($tabular ne '0' && $tabular ne '1'){ #no $tabular inputed, rather a class was accidently extracted from ARGV list
+	# push (@argClasses, $tabular); 
+	# $tabular = 1; #DEFAULT - print in tabular output & each file in mismatch-specific subdir
+# }
+
 my $pvalue;
 my $th; 
 my $elapsedTime; 
@@ -42,29 +73,33 @@ mkpath "Progress";
 &write_progress($organism, "Starting ClusterFinder for $organism\n", 1); 
 
 #Read Class names from file 
-my $classDir = "../Data/" . $organism; 
+my $classDir = $dataDir. "/" . $organism; 
 opendir(CLASSES, $classDir) || print "classdir didn't open\n";
 my @classList = sort{lc($a) cmp lc($b)}(readdir(CLASSES));
 shift(@classList) while ($classList[0] =~ /^\./); #erase "." and ".." links
 closedir(CLASSES);
 
-#Retain only classes that are listed in the classFile (if classFlag == 1)
+
+#Retain only classes that are listed in the classList
 if (@argClasses){
 	&getClasses(\@classList, $organism, \@argClasses); 
 	if (scalar(@classList) == 0) { #No classes were retained - some kind of problem
 		print "No classes retained in class-list for $organism in runClusterFinder.pl\n"; 
 	}
 }
+
+
+
 #erase all index files where clusters will be searched for
 removeIndexFiles::remove($organism, \@classList); 
 
 ###### LOOP 1: each class in organism ######
 foreach my $class (@classList) {
-	my $resDir = "../Data/$organism/$class/results"; 
+	my $resDir = "$dataDir/$organism/$class/results"; 
 	&write_progress($organism, "$class Class:\n"); 
 
 	# Delete all contents of the stats file
-	my $out_name = ">../Data/" . $organism . "/" . $class . "/db/Stats_$class.txt";
+	my $out_name = ">$dataDir/" . $organism . "/" . $class . "/db/Stats_$class.txt";
 	open(my $temp,$out_name);
 	close($temp);
 	
@@ -115,7 +150,7 @@ foreach my $class (@classList) {
 		}
 		
 		#create family's blast output files
-		mkpath "../Data/$organism/$class/results/blasts/$family"; 
+		mkpath "$dataDir/$organism/$class/results/blasts/$family"; 
 		
 		###### LOOP 3: each name in family ######
 		opendir(NAME, $nameDir);
@@ -151,11 +186,10 @@ foreach my $class (@classList) {
 			@start = Time::HiRes::gettimeofday(); #keep start time
 			&write_progress($organism, "Analyzing $name ... ");
 			
-			# my $analyzeBlast = "perl AnalyzeBlastByLength.pl $name $organism $class $family $pval_h $pval_l $th_l $th_h"; 
-			# $analyzeBlast =~ s/\(/\\\(/g; $analyzeBlast =~ s/\)/\\\)/g; #add backslashes before "(" and ")" symbols. 
-			# system($analyzeBlast);
-			#the following line should replace the preceding 3
-			my $formatted = AnalyzeBlastByLength::AnalyzeBlast($name, $allMMs, $organism, $class, $family, $pval_h, $pval_l, $th_l, $th_h, $tabular); 
+			my %taxa = ("org" => $organism, "class" => $class, "fam" => $fam, "name" => $name); 
+			
+			my $formatted = AnalyzeBlastByLength::AnalyzeBlast(\%taxa, \%args); 
+	
 			if($formatted){ #save log if formatted
 				print "formatted $organism $class $family $name\n" if $formatted;
 			}

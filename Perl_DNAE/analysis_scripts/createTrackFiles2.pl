@@ -28,6 +28,11 @@
 #					4. 
 #					5. 
 #exec-example:  perl analysis_scripts/createTrackFiles.pl Human LINE L1 1e-6 10  0 Clusters_80_percent_length_G &
+
+#Possible to-do list: 
+#1. loop through pmotif and pmotif2.
+
+
 use strict;
 use lib $ENV{HOME} ."/Perl_DNAE";
 use getAll; 
@@ -39,7 +44,7 @@ my $home = $ENV{HOME};
 # use Data::Dumper;
 
 # my $INTERVAL_DIR = "/private3/Dropbox/users/binknis_data/Avian/rawdata/intervals"; #interval dir (currently for Avian genome project)
-my $INTERVAL_DIR = "/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; #interval dir (currently for Avian genome project)
+my $INTERVAL_DIR = "/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; #interval dir - for vertebrates from UCSC
 my $FETCH_SUBFAMS_FROM_INTERVAL_FILE = 0; #CONST to get or not to get subfams from the original Interval file  (1 was used for avian genomes)
 my $SUBFAM_SELECTION_NUC; #if there are different subfams - use G or A's subfam when single annotation is needed
 my $DONT_GET_BEST_SOURCES = 1; #skip last time-consuming step that BLASTs to find best match (good to disable for large intermediate datasets)
@@ -51,8 +56,8 @@ $mm = uc $mm;
 unless ($SUBFAM_SELECTION_NUC){ 
 	$SUBFAM_SELECTION_NUC = $mmS; 
 }
-my $pmotif = '1e-3';
-my $pmotif2 = '1e-2';
+my $pmotif = '1e-3'; #pval for motif detection
+my $pmotif2 = '1e-2'; #same. if non-zero analyzes for another pval
 my $filter_subdir = ($filter ? "/Filtered" : ""); 
 my $f_type;  my $retain; my $f_pairs=""; my $f_seqsG=""; my $f_seqsA=""; my $f_subfams=""; my $cluster_file_filter; #filter variables used later
 my %subfamPerElem;
@@ -114,7 +119,7 @@ else{ #No filter - there is no need to create a new cluster file, a symbolic lin
 while(my $line  = <CLUSTS>)
 {
 	chomp $line; 
-	next unless $line =~ /^[ACTG][ACTG]\t/; #skip header line
+	next unless $line =~ /^[ACTG][ACTG]\t/; #skip header line #***MODIFY if adding C->N clusters
 	# print $line; #***
 	(my $mmType, my $assembly, my $class, my $fam, my $subfam, 
 	my $coordsG, my $coordsA, my $direct_mms, my $num_all_mms, my $prob, 
@@ -162,10 +167,10 @@ while(my $line  = <CLUSTS>)
 			next if $found; 
 		}
 		else{ #flag was 1 (retain only arged pairs/seqs/subfams)
-			if($f_seqsG and $f_seqsA){ #need both seqs to exist to retain cluster
+			if($f_seqsG and $f_seqsA){ #If both hashes exist then need both seqs to exist to retain cluster
 				next if $found < 2; #one or none of G and A seqs found
 			}
-			else{
+			else{ 
 				next if $found == 0; 
 			}
 		}
@@ -350,6 +355,7 @@ sub printSitesToGFF{
 	}
 }
 
+#Utility for writing the siteList file
 sub printSiteList{
 	(my $fh, my $hashRef, my $coordsToDefline) = @_;
 	foreach my $coord (sort keys %$hashRef){
@@ -361,6 +367,7 @@ sub printSiteList{
 	}
 }
 
+#Utility for writing a log of the filter used (will be in the respective track outdir)
 sub createFilterFile{
 	(my $dir, my $filter) = @_; 
 	my $filter_file = $dir ."/". "filter.txt"; 

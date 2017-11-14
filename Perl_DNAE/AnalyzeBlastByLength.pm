@@ -7,18 +7,17 @@ use ProcessAlignmentByLength;
 use blastFormatter; 
 
 package AnalyzeBlastByLength; 
-
+$organism, $class, $family, $name, \%args);
 sub AnalyzeBlast {
 	my $only_first_hsp = 0; #*** Flag: 0 - analyze all HSPs, 1 - only first HSP
 	my $num_queries = 0;
 	my $num_hits;
 	my $num_hsps;
 	my %queries;
-	my $name = shift;
-	my $allMMs = shift; 
-	my @cmd_line = @_;
-	(my $organism, my $class, my $family) = splice(@_,0,3); 
-	my $blastFile = "../Data/$organism/$class/results/blasts/$family/$name".".gz"; 
+	my ($taxa_r, $args_r) = @_; 
+	my ($organism, $class, $family, $name) = ($taxa_r->{"org"}, $taxa_r->{"class"}, $taxa_r->{"fam"}, $taxa_r->{"name"});
+	
+	my $blastFile = $args_r->{"dataDir"} . "/$organism/$class/results/blasts/$family/$name".".gz"; 
 	open(my $pipeFromZippedBlast, "gunzip -c $blastFile |") or die "open gzipped $blastFile\n"; 
 	my $in = new Bio::SearchIO(-format => 'blast', -fh   => $pipeFromZippedBlast);
 	my $ppid = getppid();
@@ -26,7 +25,7 @@ sub AnalyzeBlast {
 	open(my $progress_handle,">>$progress");
 	print $progress_handle "Name $name: Starting...\n";
 	close($progress_handle);
-	my $stats_name = "../Data/$organism/$class/db/Stats_$family.txt";
+	my $stats_name = $args_r->{"dataDir"} . "/$organism/$class/db/Stats_$family.txt";
 
 	my $try = 1; 
 	while ($try <= 2){
@@ -56,7 +55,7 @@ sub AnalyzeBlast {
 							# Avoid alignment with a sequence to itself
 							if ($hsp->percent_identity() < 100)
 							{
-								ProcessAlignmentByLength::process_alignment_by_length(\$hsp, $result->query_name(), $hit->name(), $allMMs, \@cmd_line);
+								ProcessAlignmentByLength::process_alignment_by_length(\$hsp, $result->query_name(), $hit->name(), $taxa_r, $args_r);
 							}
 						}
 						last if $only_first_hsp; #only check first HSP for every query-subject pair

@@ -4,7 +4,7 @@ use FindClustersByLength;
 
 sub process_alignment_by_length
 {
-	(my $hsp_ref, my $query_name, my $hit_name, my $allMMs, my $cmd_line_ref) = @_; 
+	(my $hsp_ref, my $query_name, my $hit_name, my $taxa_r, my $args_r) = @_; 
 	my $hsp = $$hsp_ref;
 	my $len = int( ( $hsp->length('query') + $hsp->length('hit') ) / 2 );
 
@@ -105,11 +105,11 @@ sub process_alignment_by_length
 		}
 		if (exists $no_rev{$m}){ #correct order (e.g. ga)
 			FindClustersByLength::find_clusters_by_length
-					( \@{$inds{$m}}, \@{$mms{$m}}, \@{$mms_parent{$m}}, $query_name, $hit_name, $probs{$m}, $m, $total_mms, $len, $cmd_line_ref,  \%counts); #2 is flag for transversion
+					( \@{$inds{$m}}, \@{$mms{$m}}, \@{$mms_parent{$m}}, $query_name, $hit_name, $probs{$m}, $m, $total_mms, $len, $taxa_r, $args_r,  \%counts); #2 is flag for transversion
 		}
 		else{ #reversed (e.g. ag) -- #Note: no need to reverse mms and mms_parent because it is reversed above, upon alignment parsing
 			FindClustersByLength::find_clusters_by_length
-					( \@{$inds{$m}}, \@{$mms{$m}}, \@{$mms_parent{$m}}, $hit_name, $query_name, $probs{$m}, (scalar reverse $m), $total_mms, $len, $cmd_line_ref, \%counts_rev); #mm arrays and query/hit are reversed ; 2 is flag for transversion;
+					( \@{$inds{$m}}, \@{$mms{$m}}, \@{$mms_parent{$m}}, $hit_name, $query_name, $probs{$m}, (scalar reverse $m), $total_mms, $len, $taxa_r, $args_r, \%counts_rev); #mm arrays and query/hit are reversed ; 2 is flag for transversion;
 		}
 	}
 }

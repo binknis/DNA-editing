@@ -606,21 +606,62 @@ sub getNucStats {
 	
 }
 
-#***Add option to read from zipped file
-#***Add option for BED input 
+#$invlPath can be: (a) a directory (in which case it contains an interval file named $org.".interval") 
+#				   (b) a BED file (in which case $org isn't used)
+#Notes: #Added option to read from zipped file
+		#Added option for BED input 
 sub getSubfamsFromIntervalFile{
-	(my $invlDir, my $org, my $class, my $fam) = @_; 
+	(my $invlPath, my $org, my $class, my $fam) = @_; 
+	my $invlFile; 
 	my %c2sf = (); 
-	my $invlFile = $invlDir ."/". $org . ".interval"; 
-	open(my $invl_fh, $invlFile) or die "open $invlFile\n"; 
+	if(-d $invlPath){ #Interval dir was specified 
+		$invlFile = $invlPath ."/". $org . ".interval"; 
+	} elsif ($invlPath !~ /.bed(.gz)?$/)else { #bed file 
+		$invlFile = $invlPath;
+	}
+	
+	if(-e $invlFile.".gz"){ #just in case interval/bedfile have been zipped. Will enable reading it
+		$invlFile = $invlFile.".gz"; 
+	}
+	
+	if($invlFile =~ /\.gz$/){
+		open(my $invl_fh, "gunzip -c $invlFile |") or die "open zipped $invlFile failed\n"; 
+	} else {
+		open(my $invl_fh, $invlFile) or die "open $invlFile failed\n"; 
+	}
+	
 	while(my $l = <$invl_fh>){
 		chomp $l; 
 		next if $l =~ /^#/; 
 		my @fs = split(/\t/, $l); #chr, start, end, strand, name, class, fam 
-		next unless ($fs[5] eq $class and $fs[6] eq $fam); #insert only this coords of this class and fam to hash
-		my $coords = $fs[0] .":". $fs[1] ."-". $fs[2] . $fs[3]; 
-		$c2sf{$coords} = $fs[4]; 
+		if($#fs==6){ #interval file (7 cols)
+			next unless ($fs[5] eq $class and $fs[6] eq $fam); #insert only coords of this class and fam to hash
+			my $coords = $fs[0] .":". $fs[1] ."-". $fs[2] . $fs[3]; 
+			$c2sf{$coords} = $fs[4]; 
+		} elsif ($#fs==5) { #bed file (6 cols)
+			my @name_parts = split('\|', $fs[3]); #split by pipe (the expected format of BED 'name' col is: coords|class|fam|name)
+			my ($coords, $class2, $fam2, $name2) = @name_parts[-3..-1];
+			next unless ($class2 eq $class and $fam2 eq $fam); #insert only coords of this class and fam to hash
+			$c2sf{$coords} = $name2; 
+		}
 	}
 	close($invl_fh); 
 	return \%c2sf; 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -37,6 +37,7 @@ system("ulimit -Sn 4096"); #set the file limit to 4096, so that it doesn't fail 
 
 my $NO_TAXA_LABEL = "All"; #string to use when no class/family/name are given
 my $TEMP_UNIQUE_STRING = "==="; #string used for parsing
+my $FOLD_ROW_LEN = 120; #number of chars to allow per line when writing temp fasta
 
 ### Commandline defaults
 my $repeatIntervalFile   = '';
@@ -467,7 +468,7 @@ sub getSeqsFromGenome{
 		$tempFaFile = s/(.*)\//$tempDir/;
 	}
 	
-	system("bedtools getfasta -s -name -fi $genomeFile -bed $bedFile | sed 's/::.*//' | fold -w 80 | awk ".'\'{if($0 !~ />/) print tolower($0); else print $0;}\''." > $tempFaFile");
+	system("bedtools getfasta -s -name -fi $genomeFile -bed $bedFile | sed 's/::.*//' | fold -w $FOLD_ROW_LEN | awk ".'\'{if($0 !~ />/) print tolower($0); else print $0;}\''." > $tempFaFile");
 	# system("head -100 $tempFaFile");
 	return $tempFaFile; 
 }

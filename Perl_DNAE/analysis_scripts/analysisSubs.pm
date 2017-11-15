@@ -3,12 +3,17 @@ package analysisSubs;
 use Math::Round qw(nearest);
 use Bio::SearchIO;
 use Bio::SeqIO; 
-use lib $ENV{HOME} . "/Perl_DNAE"; 
-use getAll; 
+
 use List::Util qw(max min sum);
 use File::Path qw(mkpath);
 use File::Copy;
-use Data::Dumper;
+# use Data::Dumper;
+
+# use lib $ENV{HOME} . "/Perl_DNAE"; #*** make sure it works after replacing this with following lines
+use FindBin;
+use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
+use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
+use getAll; 
 
 ###Specifications: 
 # splitFastaBySubfam(), getConsPosHist() - need deflines to have subfam at end of defline, with a preceding '=', so that matches: /=([^=]+)$/ to extract subfam
@@ -2413,51 +2418,6 @@ sub copySubfamSequences {
 		}
 	}
 }
-
-
-#Function: Filters a cluster file. 
-#***I did this in a separate script in the end
-sub getFilteredClusterFile {
-	(my $in_clusterFile, my $outDir, my $in_trackDir, my $rmsk_file, my $mapToConsensus_file) = @ARGV; 
-	
-	### Get data for "Divergence from consensus" filter (A-more-div)
-	open(my $rmsk_fh, $rmsk_file) or die "open $rmsk_file\n"; 
-	while(my $l = <$rmsk_fh>){
-		chomp $l; 
-		my @fs = split(/\t/, $l); #fields: 
-		
-		
-	}
-	close($rmsk_fh); 
-	### Get data for Consensus mapping filter (Most G map G)
-	
-	
-	#Cleanness filter on cluster stats
-	#List of filters (values specified are defaults): 
-		# Min. # mismatches per cluster  5
-		# Min. # mismatch in (one or more) clusters  10
-		# Percent of mismatch and reverse (e.g. GA / (GA + AG) * 100)  60
-		# Percent of mismatch and complement (e.g. GA / (GA + CT) * 100)  60
-		# Percent of all mismatches in alignment  33.333
-		# Minimal span of clusters (bps)  60
-
-	my $NUM_MM_ALIGNMENT = 10; 
-	my $PC_MM_VS_REVERSE = 60; 
-	my $PC_MM_VS_COMPLEMENT = 60;
-	my $PC_OF_ALL_MM = 33.333; 
-	my $MIN_SPAN_CLUSTERS = 60; 
-	
-	
-	
-
-	
-
-}
-
-
-
-
-
 
 
 return 1; 

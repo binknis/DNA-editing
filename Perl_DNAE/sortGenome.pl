@@ -174,7 +174,7 @@ if (-e $classDir){
 	foreach $class (@sortedClassesList){
 		unless($OVERRIDE_SORTED){ #skip these classes
 			$sortedClasses{$class} = 1;
-		} else { #delete sorted contents
+		} elsif($OVERRIDE_SORTED and exists $classesToSort{$class} and not exists $classesToExclude{$class}) { #delete sorted contents
 			system("rm -r $classDir/$class/db");
 		}
 	}

@@ -23,7 +23,7 @@
 #Requires a LINUX system and bedtools (change 'bedtools' call below if not in default $PATH)
 
 #Late notes: 
-#	1. If $OVERRIDE_SORTED is specified (to overried sorted files), it will work only if $OPENCLOSE_PER_SEQ is False. Otherwise, make sure to delete the sorted classes to override in advance. 
+#	1. If $OVERRIDE_SORTED is specified the db folder of the specified classes (or all) will be deleted. To avoid serious mistakes it currently doesn't delete the results dir (including previous blast results). Delete them manually if necessary.
 
 use strict; 
 use File::Path qw(mkpath);

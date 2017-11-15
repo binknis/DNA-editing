@@ -82,7 +82,7 @@ GetOptions ("interval|bed|rmsk=s" => \$repeatIntervalFile,
 		  "assembly=s" => \$assembly,
 		  "dropAsterisks!" => \$DROP_ASTERISK_MARKED_IN_RMSK,
 		  
-		  "dataDir|out=s"  => \$dataDir,
+		  "dataDir|datadir|out=s"  => \$dataDir,
 		  "organism|org=s"  => \$organism,
 		  "lc|tolower!"  => \$lc,
 		  "classes=s" => \@classes,

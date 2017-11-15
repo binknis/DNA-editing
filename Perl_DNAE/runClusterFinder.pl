@@ -26,7 +26,7 @@ my $cores = 12;
 my $allMMs = 1;
 my @classes = (); 
  
- GetOptions ("dataDir=s"  => \$dataDir,
+ GetOptions ("datadir|dataDir=s"  => \$dataDir,
 	"organism|org=s" => \$organism,
 	"pval_h=s" => \$pval_h,
 	"pval_l=s" => \$pval_l,
@@ -69,8 +69,8 @@ closedir(CLASSES);
 
 
 #Retain only classes that are listed in the classList
-if (@argClasses){
-	&getClasses(\@classList, $organism, \@argClasses); 
+if (@classes){
+	&getClasses(\@classList, $organism, \@classes); 
 	if (scalar(@classList) == 0) { #No classes were retained - some kind of problem
 		print "No classes retained in class-list for $organism in runClusterFinder.pl\n"; 
 	}
@@ -162,7 +162,7 @@ foreach my $class (@classList) {
 			@start = Time::HiRes::gettimeofday(); #keep start time
 			&write_progress($organism, "Analyzing $name ... ");
 			
-			my %taxa = ("org" => $organism, "class" => $class, "fam" => $fam, "name" => $name); 
+			my %taxa = ("org" => $organism, "class" => $class, "fam" => $family, "name" => $name); 
 			
 			my $formatted = AnalyzeBlastByLength::AnalyzeBlast(\%taxa, \%args); 
 	

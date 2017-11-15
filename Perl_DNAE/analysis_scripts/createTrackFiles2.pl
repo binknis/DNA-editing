@@ -61,7 +61,7 @@ my $DONT_GET_BEST_SOURCES = 1; #skip last time-consuming step that BLASTs to fin
 
 my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited elements
  
- GetOptions ("dataDir=s"  => \$dataDir,
+ GetOptions ("dataDir|datadir=s"  => \$dataDir,
 	"organism|org=s" => \$org,
 	"class=s" => $class,
 	"family=s" => $family,

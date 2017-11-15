@@ -13,9 +13,10 @@
  use IO::Compress::Gzip qw(gzip);
  use IO::Uncompress::Gunzip qw(gunzip);
  use AnalyzeBlastByLength; 
+ use Getopt::Long;
  
 #Command line parameter default values
-my $dataDir = "../Data"
+my $dataDir = $ENV{HOME} ."/Data";
 my $organism = '';
 my $pval_h = 2;
 my $pval_l = 5;
@@ -23,7 +24,6 @@ my $th_l = 4;
 my $th_h = 5;
 my $cores = 12;
 my $allMMs = 1;
-my $tabular = 1;
 my @classes = (); 
  
  GetOptions ("dataDir=s"  => \$dataDir,
@@ -34,7 +34,6 @@ my @classes = ();
 	"th_h=i" => \$th_h,
 	"cores=i" => \$cores,
 	"allmms!" => \$allMMs,
-	"tabular!" => \$tabular,
 	
 	"classes=s" => \@classes)
 or die("Error in command line arguments\n");
@@ -42,22 +41,11 @@ or die("Error in command line arguments\n");
 @classes = sort(split(/,/,join(',',@classes))); #allow comma-separated list
  
  my %args = ();
- $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs; $args{"tabular"} = $tabular;
+ $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs; 
  
  ######################
  #######  MAIN   ######
  ######################
-# my $num_to_splice = 7; 
-# (my $organism, my $pval_h, my $pval_l, my $th_l, my $th_h, my $cores, my $allMMs, my $tabular) = splice(@ARGV,0,$num_to_splice);
-# my @argClasses = @ARGV;
-# if ($allMMs ne '0' && $allMMs ne '1'){ #no $allMMs inputed, rather a class was accidently extracted from ARGV list
-	# push (@argClasses, $allMMs); 
-	# $allMMs = 1; #DEFAULT - check all mismatches
-# }
-# if ($tabular ne '0' && $tabular ne '1'){ #no $tabular inputed, rather a class was accidently extracted from ARGV list
-	# push (@argClasses, $tabular); 
-	# $tabular = 1; #DEFAULT - print in tabular output & each file in mismatch-specific subdir
-# }
 
 my $pvalue;
 my $th; 
@@ -130,19 +118,7 @@ foreach my $class (@classList) {
 				
 				#mismatch-specific dirs
 				foreach my $mm (@mmDirs){
-					next if ( not $tabular and ($mm eq 'GA' or $mm eq 'CT') ); #Don't create subdirs for GA and CT output when non-tabular output format was chosen (tabular=0)
-					$cluster_name = ">" . $resDir . "/" . $mm . "/clusters_" . $organism . "_" . $class . "_" . $family . "_" . $pvalue . "_" . $th . ($tabular ? ".tab" : ".txt");
-					open(my $c_handle, $cluster_name);
-					close($c_handle);
-				}
-				
-				unless ($tabular){ #not tabular output - create files in "results" dir for GA and CT (old)
-					#real (GA)
-					$cluster_name = ">" . $resDir . "/clusters_" . $organism . "_" . $class . "_" . $family . "_" . $pvalue . "_" . $th . ".txt";
-					open(my $c_handle, $cluster_name);
-					close($c_handle);
-					#control (CT)
-					$cluster_name = ">" . $resDir . "/clusters_" . $organism . "_" . $class . "_" . $family . "_" . $pvalue . "_" . $th . "_control.txt";
+					$cluster_name = ">" . $resDir . "/" . $mm . "/clusters_" . $organism . "_" . $class . "_" . $family . "_" . $pvalue . "_" . $th . ".tab";
 					open(my $c_handle, $cluster_name);
 					close($c_handle);
 				}

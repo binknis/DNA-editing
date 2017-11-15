@@ -32,59 +32,121 @@
 #Possible to-do list: 
 #1. loop through pmotif and pmotif2.
 
-
-use strict;
-use lib $ENV{HOME} ."/Perl_DNAE";
-use getAll; 
-my $perlDir = $ENV{HOME} ."/Perl_DNAE"; 
-use lib $ENV{HOME} ."/Perl_DNAE/analysis_scripts"; 
-use analysisSubs; 
+use strict; 
+use Cwd;
 use File::Path qw(mkpath);
-my $home = $ENV{HOME}; 
-# use Data::Dumper;
+use Getopt::Long;
 
-# my $INTERVAL_DIR = "/private3/Dropbox/users/binknis_data/Avian/rawdata/intervals"; #interval dir (currently for Avian genome project)
-my $INTERVAL_DIR = "/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; #interval dir - for vertebrates from UCSC
-my $FETCH_SUBFAMS_FROM_INTERVAL_FILE = 0; #CONST to get or not to get subfams from the original Interval file  (1 was used for avian genomes)
-my $SUBFAM_SELECTION_NUC; #if there are different subfams - use G or A's subfam when single annotation is needed
+####################################
+#######  COMMAND LINE ARGS  ########
+####################################
+
+###Command line parameter default values
+my $dataDir = $ENV{HOME} . "/Data";
+my $org = '';
+my $class = ''; 
+my $family = ''; 
+my $pval = 5;
+my $th = 5;
+my $cores = 12;
+my $mm = "GA";
+my $filter = ''; 
+my $filter_subdir = "Filtered"; 
+
+my $intervalFile = ''; 
+my $intervalDir = ''; #interval or BED file (used to extract subfams per element when subfams of S and T may be different)  #"/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; # my $intervalDir = "/private3/Dropbox/users/binknis_data/Avian/rawdata/intervals"; #interval dir (for Avian genome project)
+
+my $SUBFAM_SELECTION_NUC = 'S'; #if there are different subfams - use G or A's subfam when single annotation is needed
 my $DONT_GET_BEST_SOURCES = 1; #skip last time-consuming step that BLASTs to find best match (good to disable for large intermediate datasets)
-( my $org, my $class, my $family, my $pval, my $th, my $mm, my $filter) = @ARGV;
-$pval = "1e-" . $pval if $pval =~ /^\d+$/;
-$mm = "GA" if ($mm eq '' or $mm eq '0');
+
+my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited elements
+ 
+ GetOptions ("dataDir=s"  => \$dataDir,
+	"organism|org=s" => \$org,
+	"class=s" => $class,
+	"family=s" => $family,
+	"pval=s" => \$pval,
+	"th=i" => \$th,
+	"cores=i" => \$cores,
+	"mm=s" => \$mm,
+	
+	"filter=s" => \$filter,
+	"filter_subdir=s" => \$filter_subdir,
+	
+	"pmotif=s" => \@pmotifs,
+	
+	"interval_file=s" => \$intervalFile,
+	"interval_dir=s" => \$intervalDir,
+	"skip_best_source!" => \$DONT_GET_BEST_SOURCES,
+	"subfam_selection_nuc=s" => \$SUBFAM_SELECTION_NUC
+	)
+or die("Error in command line arguments\n");
+ 
+# print $pval ."\n"; exit; #***
+####################################
+####################################
+### load libs. Optionally as arg
+use FindBin;
+my $perlDir = "$FindBin::Bin/.."; # locate this script
+use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
+use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
+use getAll; 
+use analysisSubs; 
+
+### Modify and parse input args
+$pval = "1e-" . $pval if $pval =~ /^\d+$/; #fix format of pval input (enables inputting int instead of scientific notation)
 $mm = uc $mm; 
 (my $mmS, my $mmT) = split('', $mm); #save source and target mismatches
-unless ($SUBFAM_SELECTION_NUC){ 
+
+##Subfamily selection
+if ($SUBFAM_SELECTION_NUC eq 'S'){ 
 	$SUBFAM_SELECTION_NUC = $mmS; 
+} else {
+	unless ($SUBFAM_SELECTION_NUC eq $mmS or $SUBFAM_SELECTION_NUC eq $mmT){
+		die "bad subfam_selection_nuc: $SUBFAM_SELECTION_NUC. Must be: $mmS or $mmT for your mm input: $mm\n";
+	}
 }
-my $pmotif = '1e-3'; #pval for motif detection
-my $pmotif2 = '1e-2'; #same. if non-zero analyzes for another pval
-my $filter_subdir = ($filter ? "/Filtered" : ""); 
-my $f_type;  my $retain; my $f_pairs=""; my $f_seqsG=""; my $f_seqsA=""; my $f_subfams=""; my $cluster_file_filter; #filter variables used later
-my %subfamPerElem;
+
+##CONST to get or not to get subfams from the original Interval file  (1 was used for avian genomes where elements were compared at fam level)
+my $FETCH_SUBFAMS_FROM_INTERVAL_FILE = ($intervalFile or $intervalDir) ? 1 : 0; 
+my %subfamPerElem; #init hash used to store fetched subfam data
+
+#change ints of p-value for motif detection into scientific notation
+@pmotifs = sort(split(/,/,join(',',@pmotifs))); #allow comma-separated list
+for (my $i=0; $i<=$#pmotifs; $i++){
+	 $pmotifs[$i] = "1e-" . $pmotifs[$i] if $pmotifs[$i] =~ /^\d+$/;
+}
+
+####################################
+####################################
+### Init filter variables used later
+my $f_type;  my $retain; my $f_pairs=""; my $f_seqsG=""; my $f_seqsA=""; my $f_subfams=""; my $cluster_file_filter; 
+
 #### build file name and track dir ####
-#cluster file
+#Setup cluster file
 my $suffix = $org . "_" . $class . "_" . $family . "_" . $pval . "_" . $th; 
-my $resDir = $home . "/Data/" . $org . "/" . $class . "/results"; 
+my $resDir = $dataDir . "/" . $org . "/" . $class . "/results"; 
 my $cluster_file = $resDir ."/". $mm . "/clusters_" . $suffix .".tab";
 exit if (not -e $cluster_file or -z $cluster_file); #don't parse if cluster's file is empty (avoids creating empty track files). 
-#track dir ("dir")
-my $Tracks_dir = $resDir . "/Tracks"; 
-my $dir = $Tracks_dir . $filter_subdir; 
-$dir .= "/tracks_" . $suffix ."/". $mm;
+
+#Track dir ("trackDir")
+my $trackRootDir = $resDir . "/Tracks"; 
+my $trackDir = $trackRootDir . "/". $filter_subdir; 
+$trackDir .= "/tracks_" . $suffix ."/". $mm;
 #dir trailers
 if ($filter){
 	(my $f_suffix) = $filter =~ /([^\|]+)$/;
-	$dir .= "/" . $f_suffix;
+	$trackDir .= "/" . $f_suffix;
 	$filter =~ s/\|[^\|]+$//; 
 }
 #create track dirs
-mkdir $Tracks_dir; #create "Tracks" dir
-mkpath $dir; #create specific 'tracks' dir
-my $tabular_file = $dir ."/clusters_". $suffix .".tab"; #cluster_file_tabular_in_track_dir
+mkdir $trackRootDir; #create "Tracks" dir
+mkpath $trackDir; #create specific 'tracks' dir
+my $tabular_file = $trackDir ."/clusters_". $suffix .".tab"; #cluster_file_tabular_in_track_dir
 
 #create documentation file for filter and parse the filter (if file is specified it will be parsed)
 if ($filter){
-	createFilterFile($dir, $filter); #Create filter-description file
+	createFilterFile($trackDir, $filter); #Create filter-description file
 	($retain, $f_pairs, $f_seqsG, $f_seqsA, $f_subfams, $cluster_file_filter) = parseFilter($filter);
 	if ($cluster_file_filter){
 		$cluster_file = $cluster_file_filter;
@@ -103,7 +165,7 @@ my %coordsToDefline = ();
 
 my $coordsToSubfam = (); 
 if($FETCH_SUBFAMS_FROM_INTERVAL_FILE){
-	$coordsToSubfam = getSubfamsFromIntervalFile($INTERVAL_DIR, $org, $class, $family); 
+	$coordsToSubfam = getSubfamsFromIntervalFile($intervalDir, $org, $class, $family); 
 }
 
 #### Parse cluster file and create tabular cluster file ###
@@ -213,23 +275,23 @@ close (CLUSTS);
 close (TAB) if $filter; 
 
 if ($filter and ($retained == 0)){ #exit if no clusters passed filter
-	die "No clusters retained after filter for: filter: $filter and output dir: $dir\n"; 
+	die "No clusters retained after filter for: filter: $filter and output dir: $trackDir\n"; 
 }
 
 ### create track and graph files ###
-open( my $seq_G_fh,    ">" . $dir . "/seq_".$mmS."_".$suffix.".gff" );
-open( my $seq_A_fh,    ">" . $dir . "/seq_".$mmT."_".$suffix.".gff" );
-open( my $sites_G_fh, ">" . $dir . "/sites_".$mmS."_".$suffix.".gff" );
-open( my $sites_A_fh, ">" . $dir . "/sites_".$mmT."_".$suffix.".gff" );
-my $siteListName_G = $dir . "/siteList_".$mmS."_".$suffix.".txt"; 
+open( my $seq_G_fh,    ">" . $trackDir . "/seq_".$mmS."_".$suffix.".gff" );
+open( my $seq_A_fh,    ">" . $trackDir . "/seq_".$mmT."_".$suffix.".gff" );
+open( my $sites_G_fh, ">" . $trackDir . "/sites_".$mmS."_".$suffix.".gff" );
+open( my $sites_A_fh, ">" . $trackDir . "/sites_".$mmT."_".$suffix.".gff" );
+my $siteListName_G = $trackDir . "/siteList_".$mmS."_".$suffix.".txt"; 
 open( my $siteList_G_fh, ">" . $siteListName_G );
-my $siteListName_A = $dir . "/siteList_".$mmT."_".$suffix.".txt"; 
+my $siteListName_A = $trackDir . "/siteList_".$mmT."_".$suffix.".txt"; 
 open( my $siteList_A_fh, ">" . $siteListName_A );
-my $graphFile = $dir . "/graph_".$suffix.".txt"; 
+my $graphFile = $trackDir . "/graph_".$suffix.".txt"; 
 open( my $graph_fh, ">" . $graphFile);
-open( my $graph2_fh, ">" . $dir . "/graph2_".$suffix.".txt");
-open( my $outDeg_fh, ">" . $dir . "/outDeg_".$suffix.".txt");
-open( my $inDeg_fh, ">" . $dir . "/inDeg_".$suffix.".txt");
+open( my $graph2_fh, ">" . $trackDir . "/graph2_".$suffix.".txt");
+open( my $outDeg_fh, ">" . $trackDir . "/outDeg_".$suffix.".txt");
+open( my $inDeg_fh, ">" . $trackDir . "/inDeg_".$suffix.".txt");
 #create header for GFF files. G sequences and sites: forest green; A sequences and sites: red.
 my $desc = $org . " " . $class . " " . $family . " " . $pval . " " . $th;
 print $seq_G_fh "track name=\"Edited Sequences (".$mmS.") " . $desc . "\" color=34,139,34 visibility=1\n"; 
@@ -265,11 +327,9 @@ close($outDeg_fh);
 close($inDeg_fh); 
 
 ### create fasta files for G and A sequences ###
-my $seqFa_G_file = $dir . "/seqFasta_".$mmS."_".$suffix.".fa";
-my $seqFa_A_file = $dir . "/seqFasta_".$mmT."_".$suffix.".fa"; 
+my $seqFa_G_file = $trackDir . "/seqFasta_".$mmS."_".$suffix.".fa";
+my $seqFa_A_file = $trackDir . "/seqFasta_".$mmT."_".$suffix.".fa"; 
 unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){
-	# system ("perl516 $perlDir/analysis_scripts/getFastaFromCoords.pl $siteListName_G $seqFa_G_file 0 0 0 0"); 
-	# system ("perl516 $perlDir/analysis_scripts/getFastaFromCoords.pl $siteListName_A $seqFa_A_file 0 0 0 0"); 
 	analysisSubs::getFastaFromCoords($siteListName_G, $seqFa_G_file, 0, 0, 0, 0);
 	analysisSubs::getFastaFromCoords($siteListName_A, $seqFa_A_file, 0, 0, 0, 0);
 }
@@ -280,12 +340,9 @@ else{
 
 ### Find Context Preference Motifs of edited sites ###
 unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #The findMotifs.pl script wasn't adapted for this option. 
-	system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif $mm $mmS $dir");
-	system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif $mm $mmT $dir"); 
-
-	if($pmotif2 > 0){
-		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif2 $mm $mmS $dir");
-		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif2 $mm $mmT $dir");
+	for my $pmotif (@pmotifs){
+		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif $mm $mmS $trackDir");
+		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif $mm $mmT $trackDir"); 
 	}
 }
 
@@ -293,8 +350,8 @@ unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #The findMotifs.pl script wasn't adap
 analysisSubs::getEditedPositionsInCons($siteListName_G); 
 analysisSubs::getEditedPositionsInCons($siteListName_A); 
 
-getNucStats($dir, $mmS, $siteListName_G); 
-getNucStats($dir, $mmT, $siteListName_A); 
+getNucStats($trackDir, $mmS, $siteListName_G); 
+getNucStats($trackDir, $mmT, $siteListName_A); 
 
 
 #Get best sources for each target element
@@ -369,8 +426,8 @@ sub printSiteList{
 
 #Utility for writing a log of the filter used (will be in the respective track outdir)
 sub createFilterFile{
-	(my $dir, my $filter) = @_; 
-	my $filter_file = $dir ."/". "filter.txt"; 
+	(my $trackDir, my $filter) = @_; 
+	my $filter_file = $trackDir ."/". "filter.txt"; 
 	open (FILTER, ">$filter_file") || die "open $filter_file\n"; 
 	print FILTER "Filter=".$filter."\n"; 
 	close(FILTER); 
@@ -458,20 +515,20 @@ sub parseFilter{
 
 ### ADVANCED ANALYSES ###
 sub getNucStats { 
-	(my $dir, my $GA, my $siteListFile) = @_; 
+	(my $trackDir, my $GA, my $siteListFile) = @_; 
 	my $suffix = $siteListFile;
 	$suffix =~ s/.*siteList_//; 
 	$suffix =~ s/\.txt$//; 
 	
-	$dir .= "/"; 
+	$trackDir .= "/"; 
 	$GA = "G" unless $GA; #default "G"
 	my $ga = lc $GA; 
 	my $trim = 0; #if to trim polyA tail using trimest
 	my $border = 0; #if to calc nuc freq only within border of first and last editing sites #***
 	my $nucleotides = 0; #"cgt"; 
 	
-	# my $seqFile = $dir . "seqFasta_".$GA."_Human_SINE_Alu_1e-0_4.fa";
-	my $seqFile = $dir . "seqFasta_". $suffix .".fa";
+	# my $seqFile = $trackDir . "seqFasta_".$GA."_Human_SINE_Alu_1e-0_4.fa";
+	my $seqFile = $trackDir . "seqFasta_". $suffix .".fa";
 	if ($trim){
 		my $trimmedSeqFile = $seqFile; 
 		$trimmedSeqFile =~ s/seqFasta/seqFastaTrimmed/; 
@@ -480,12 +537,12 @@ sub getNucStats {
 		$seqFile = $trimmedSeqFile; 
 	}
 	
-	$siteListFile = $dir . "siteList_".$suffix.".txt"; 
+	$siteListFile = $trackDir . "siteList_".$suffix.".txt"; 
 	# my $range = 2; 
-	# my $freqFile = $dir . "logo".($range==2 ? "" : $range)."_".$suffix."_freq.txt";
+	# my $freqFile = $trackDir . "logo".($range==2 ? "" : $range)."_".$suffix."_freq.txt";
 	my $range = 7; 
-	my $freqFile = $dir . "rawFreq_".$suffix.".txt";
-	my $freqPerSeqFile = $dir . "freqPerSeq_".$suffix.".txt"; 
+	my $freqFile = $trackDir . "rawFreq_".$suffix.".txt";
+	my $freqPerSeqFile = $trackDir . "freqPerSeq_".$suffix.".txt"; 
 	my $no_CpG = 0; 
 	analysisSubs::getNucFrequencyPerPosAllSeqs($seqFile, $siteListFile, $range, 1, 0, $freqFile, $no_CpG, $freqPerSeqFile); #(my $seqFile, my $siteListFile, my $range, my $normalize, my $reverse_editing, my $outfile, my $no_CpG, my $freqPerSeqFile)
 	
@@ -498,7 +555,7 @@ sub getNucStats {
 	}
 	 my $freqNormedFile = $siteListFile; 
 	 $freqNormedFile =~ s/.*siteList/freq/; 
-	 $freqNormedFile = $dir .($border ? "bordered_" : "").($nucleotides ? $nucleotides ."_" : ""). $freqNormedFile; 
+	 $freqNormedFile = $trackDir .($border ? "bordered_" : "").($nucleotides ? $nucleotides ."_" : ""). $freqNormedFile; 
 	analysisSubs::printFreqHash($hash_ref, $freqNormedFile);
 	
 	#print background frequencies used for above normalization
@@ -525,12 +582,12 @@ sub getNucStats {
 	analysisSubs::getTripletsAllSeqs($seqFile, $acgt, $siteListFile, $range, $normalize, $reverse_editing, $suppressPrint, $revcom, $border);
 	
 	#create nucListFreq file
-	my $nucListFile = $dir . "nucList_".$suffix.".txt"; 
+	my $nucListFile = $trackDir . "nucList_".$suffix.".txt"; 
 	analysisSubs::nucListToFreq($nucListFile);
 	
 	#create nucList + nucListFreq per pairs
 	(my $suffix2) = $suffix =~ /[ACTG]_(\S+)/;
-	my $clustersFile = $dir . "clusters_".$suffix2.".tab"; 
+	my $clustersFile = $trackDir . "clusters_".$suffix2.".tab"; 
 	my $SorT = ($GA =~ /[AT]/ ? 1 : 0); 
 	analysisSubs::nucFreqPerPairs($clustersFile, $SorT, $GA);
 	
@@ -550,6 +607,7 @@ sub getNucStats {
 }
 
 #***Add option to read from zipped file
+#***Add option for BED input 
 sub getSubfamsFromIntervalFile{
 	(my $invlDir, my $org, my $class, my $fam) = @_; 
 	my %c2sf = (); 

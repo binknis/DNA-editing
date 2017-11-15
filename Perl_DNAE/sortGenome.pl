@@ -47,7 +47,7 @@ my $genomeFile = ''; #if specified, fetches sequences (for BED or RMSK files)
 my $assembly = 'NA'; #if genome is specified, this will be used to label sequences
 my $DROP_ASTERISK_MARKED_IN_RMSK = 1; #if rmsk is used to fetch sequences - decides if to drop lines ending with *.
 
-my $dataDir = '../Data';
+my $dataDir = $ENV{HOME} ."/Data";
 my $organism = '';
 my $lc = 1;
 my $useFamAsName = 0; #this has higher precedence on CLASS/FAM/NAME_CONST params
@@ -62,6 +62,7 @@ my $OPENCLOSE_PER_SEQ = 0; #to avoid issues with opening too many file handles, 
 my $retainTempFiles = 0; 
 my $tempDir = ''; #use homedir as default temp dir
 my $OVERRIDE_SORTED = 0; 
+
 #3 run options: 
 #	1. Provide: $repeatIntervalFile (BED/interval), $fastaFile.
 #	2. Provide: $repeatIntervalFile as (a) BED or (b) rmsk file. Must provide genome file (for seq fetching) and assembly name (for label; NA is default).
@@ -174,8 +175,10 @@ if (-e $classDir){
 	foreach $class (@sortedClassesList){
 		unless($OVERRIDE_SORTED){ #skip these classes
 			$sortedClasses{$class} = 1;
-		} elsif($OVERRIDE_SORTED and exists $classesToSort{$class} and not exists $classesToExclude{$class}) { #delete sorted contents
-			system("rm -r $classDir/$class/db");
+		} elsif($OVERRIDE_SORTED and not exists $classesToExclude{$class}) { #delete sorted contents
+			unless(@classes and not exists $classesToSort{$class}){
+				system("rm -r $classDir/$class/db");
+			}
 		}
 	}
 }

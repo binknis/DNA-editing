@@ -1,7 +1,6 @@
 #Function: Package of subroutine "find_clusters_by_length" which uses 2 subs: "max" and "write_cluster".  
 #find_clusters_by_length: 
 #max: 
-#write_cluster:
 
 #Variables: 
 #th := threshold.
@@ -20,7 +19,6 @@
 package FindClustersByLength;
 use strict;
 use Math::NumberCruncher; 
-my $tabular; 
 my @mm;
 my @mm_parent; 
 my @ind;
@@ -43,7 +41,7 @@ sub find_clusters_by_length
 	@mm_parent = @$mm_parent_ref; #pos in parent (G) for G>A editing
 	
 	($organism, $class, $family) = ($taxa_r->{"org"}, $taxa_r->{"class"}, $taxa_r->{"fam"});
-	($dataDir, $pval_h, $pval_l, $th_l, $th_h , $tabular ) = ($args_r->{"dataDir"}, $args_r->{"pval_h"}, $args_r->{"pval_l"}, $args_r->{"th_l"}, $args_r->{"th_h"}, $args_r->{"tabular"}); #pval and th order example: 5 16 5 16 (latter are 1e-5 to 1e-16)
+	($dataDir, $pval_h, $pval_l, $th_l, $th_h) = ($args_r->{"dataDir"}, $args_r->{"pval_h"}, $args_r->{"pval_l"}, $args_r->{"th_l"}, $args_r->{"th_h"}); #pval and th order example: 5 16 5 16 (latter are 1e-5 to 1e-16)
 
 	return if ($#mm + 1 < $th_l); #less mismatches than threshold - no possible clusters!
 	my %num_clusts = (); 
@@ -134,12 +132,7 @@ sub find_clusters_by_length
 	foreach my $pval(@pvals){
 		for (my $th=$th_l; $th<=$th_h; $th++){
 			if ($num_clusts{$pval}{$th} > 0){ #cluster found
-				if ($tabular){ #tabular output. All files in mm-specific subdirs.
-					write_cluster_tabular($dataDir, $pval, $th, $total_prob{$pval}{$th}, $num_clusts{$pval}{$th}, $mmType, $mmCounts);
-				}
-				else{ #Shai's original format. Only transversions are in subdirs.
-					write_cluster($dataDir, $pval, $th, $total_prob{$pval}{$th}, $num_clusts{$pval}{$th}, $mmType);
-				}
+				write_cluster_tabular($dataDir, $pval, $th, $total_prob{$pval}{$th}, $num_clusts{$pval}{$th}, $mmType, $mmCounts);
 			}
 		}
 	}

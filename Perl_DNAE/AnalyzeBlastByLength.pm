@@ -7,7 +7,7 @@ use ProcessAlignmentByLength;
 use blastFormatter; 
 
 package AnalyzeBlastByLength; 
-$organism, $class, $family, $name, \%args);
+
 sub AnalyzeBlast {
 	my $only_first_hsp = 0; #*** Flag: 0 - analyze all HSPs, 1 - only first HSP
 	my $num_queries = 0;

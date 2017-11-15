@@ -16,11 +16,14 @@
 # b. If no class arguments are sent, then all non-existant classes will be sorted. 
 #NOTE: lower case flag added; it can be skipped; Default: converts to lower case. 
 
+
 #Late edits (Starting Nov 2017): 
 #1. Changed parameter input to getOpt::Long format.
 
 #Requires a LINUX system and bedtools (change 'bedtools' call below if not in default $PATH)
 
+#Late notes: 
+#	1. If $OVERRIDE_SORTED is specified (to overried sorted files), it will work only if $OPENCLOSE_PER_SEQ is False. Otherwise, make sure to delete the sorted classes to override in advance. 
 
 use strict; 
 use File::Path qw(mkpath);
@@ -57,17 +60,19 @@ my $ALL_TAXA_CONST = '';
 my $FASTA_HEADER_REGEX = '^([^_]+)_(\S+)_(\d+)_(\d+)_([+-])\s*'; #header needs to contain assembly,chr,start,end,strand (Note: def regex previously ended with "$")
 my $OPENCLOSE_PER_SEQ = 0; #to avoid issues with opening too many file handles, this can open and close the output file for each input sequence (is slower)
 my $retainTempFiles = 0; 
-
+my $tempDir = ''; #use homedir as default temp dir
+my $OVERRIDE_SORTED = 0; 
 #3 run options: 
 #	1. Provide: $repeatIntervalFile (BED/interval), $fastaFile.
 #	2. Provide: $repeatIntervalFile as (a) BED or (b) rmsk file. Must provide genome file (for seq fetching) and assembly name (for label; NA is default).
+#				Details: 1)if BED, must contain chr:start-end[+-] format at beginning of name column
 #	3. Provide: $fastaFile. Used when running for consensus sequences or other sequences that do not have a genome and coordinate annotation.
 #	- If $dataDir isn't provided the default output dir will be used. 
 #	- Provide $intervalFormat when suffix isn't self-defining .bed or .interval (e.g. rmsk or non-standard suffix like .txt)
 #Example: perl516 sortGenome.pl --interval in.interval --fasta in.fa --dataDir /path/to/outdir --org orgname --lc --classes LTR,DNA
 # --consttaxa Octopus
 
-GetOptions ("interval|bed|gff|rmsk=s" => \$repeatIntervalFile,
+GetOptions ("interval|bed|rmsk=s" => \$repeatIntervalFile,
 		  "informat=s" => \$intervalFormat,
 		  "fasta|fa=s"   => \$fastaFile,
 		  
@@ -87,6 +92,9 @@ GetOptions ("interval|bed|gff|rmsk=s" => \$repeatIntervalFile,
 		  "regexfasta=s"  => \$FASTA_HEADER_REGEX, 
 		  "openclose|ocps!" => \$OPENCLOSE_PER_SEQ, 
 		  "excludeclass=s" => \@excludeClasses, 
+		  "override!" => \$OVERRIDE_SORTED,
+		  
+		  "tempDir" => $tempDir,
 		  "retain_temp!" => $retainTempFiles)
 or die("Error in command line arguments\n");
 
@@ -102,6 +110,12 @@ unless($intervalFormat){
 		$intervalFormat = "interval"; 
 	} elsif ($repeatIntervalFile =~ /\.(bed|BED)$/) { #BED file input
 		$intervalFormat = "bed"; 
+		if($genomeFile and $fastaFile eq ''){
+			$tempFaFile = getSeqsFromGenome($genomeFile, $repeatIntervalFile, $tempDir);
+			$FASTA_HEADER_REGEX = '(\S+:\d+-\d+[+-])'; 
+			$fastaFile = $tempFaFile;
+			# print "fastaFile: ".$fastaFile ." tempFaFile: $tempFaFile\n"; #***
+		}
 	} elsif (not $repeatIntervalFile and $fastaFile) { #Fasta ONLY input (create a pseudo-genome and BED file for consistency with downstream analyses)
 		$tempFaFile = $fastaFile .".".$$.".fa"; 
 		$tempBedFile = $fastaFile .".".$$.".bed"; 
@@ -115,11 +129,13 @@ unless($intervalFormat){
 		$FASTA_HEADER_REGEX = '^(\S+)'.$TEMP_UNIQUE_STRING.'(\S+)_(\d+)_(\d+)_([+-])\s*';
 	} else { #default for non-BED and non-INTERVAL file extensions
 		$intervalFormat = "rmsk"; 
-		($tempBedFile, $tempFaFile) = getRMSKseqsFromGenome($repeatIntervalFile, $assembly);
+		($tempBedFile, $tempFaFile) = getRMSKseqsFromGenome($repeatIntervalFile, $assembly, $tempDir);
 		$repeatIntervalFile = $tempBedFile; 
 		$fastaFile = $tempFaFile;
 	}
 }
+
+# print "testing: " . "$repeatIntervalFile , $intervalFormat , $tempFaFile , $tempBedFile\n"; #***
 
 
 ### Create "familyTree", i.e. tree describing the hierarchy of Class/Family/Name of all sequences ###
@@ -156,9 +172,14 @@ if (-e $classDir){
 	shift(@sortedClassesList) while ($sortedClassesList[0] =~ /^\./); #erase "." and ".." links
 	closedir(CLASSES);
 	foreach $class (@sortedClassesList){
-		$sortedClasses{$class} = 1;
+		unless($OVERRIDE_SORTED){ #skip these classes
+			$sortedClasses{$class} = 1;
+		} else { #delete sorted contents
+			system("rm -r $classDir/$class/db");
+		}
 	}
 }
+
 
 #Map positions to taxa and create taxa family tree
 while (my $line = <SEQDATA>){
@@ -270,11 +291,16 @@ for $class (keys %familyTree){
 }
 
 
-# print Dumper(\%posToTaxa); exit; 
+# print "dumper: " , Dumper(\%posToTaxa); #***
+# if(-e $fastaFile){
+	# print "fastaFile exists: $fastaFile\n"; 
+# } else {
+	# die "no fastaFile: $fastaFile\n";
+# }
 
 #Write families to their files
 #In this process: Convert sequence description lines(replaces shai's convertDB.pl)
-open(my $db_in_handle, $fastaFile); #maybe unneeded
+open(my $db_in_handle, $fastaFile) || die "can't open $fastaFile\n"; #maybe unneeded
 my $inseq = Bio::SeqIO->new( -file => $fastaFile,    -format => 'fasta' );
 my %map = ('a'=>0,'c'=>1,'g'=>2,'t'=>3, 'A'=>0,'C'=>1,'G'=>2,'T'=>3); #capitals added to avoid need to convert later to lc
 my %outCount = (); 
@@ -296,11 +322,12 @@ while ( my $seq = $inseq->next_seq )
 		$genome = $assembly; 
 		$pos = $matched[0]; 
 	} else  {
-		print "length: " . $#matched . "; regex: ". $FASTA_HEADER_REGEX."; display_id: ". $seq->display_id()."\n"; 
+		print "Error! var details: length: " . $#matched . "; regex: ". $FASTA_HEADER_REGEX."; display_id: ". $seq->display_id()."\n"; 
 		die "bad fasta header input format\n"; 
 	}
+	# print "genome: $genome , pos: $pos\n"; #***
 	
-	next unless exists $posToTaxa{$pos}; #***"next" should happen only if $classFlag == 1. 
+	next unless exists $posToTaxa{$pos}; #"next" should happen only if specific classes are analyzed
 	next if exists $outputed{$pos}; #avoid writing same sequence twice to output (needed if same coords appear twice in output file; it happened...)
 	$outputed{$pos}=1; 
 	#get serial number of this sequence in it's file (used for unique identifier at head of fasta defline)
@@ -431,8 +458,11 @@ sub round{
 
 
 sub getSeqsFromGenome{
-	(my $genomeFile, my $bedFile) = @_; 
+	(my $genomeFile, my $bedFile, my $tempDir) = @_; 
 	my $tempFaFile = $bedFile .$$. ".temp.fa"; #temp fa file returned for sorting
+	if($tempDir){
+		$tempFaFile = s/(.*)\//$tempDir/;
+	}
 	
 	system("bedtools getfasta -s -name -fi $genomeFile -bed $bedFile | sed 's/::.*//' | fold -w 80 | awk ".'\'{if($0 !~ />/) print tolower($0); else print $0;}\''." > $tempFaFile");
 	# system("head -100 $tempFaFile");
@@ -441,10 +471,12 @@ sub getSeqsFromGenome{
 
 
 sub getRMSKseqsFromGenome {
-	my $rmskFile = shift; 
-	my $assembly = shift; 
+	my ($rmskFile, $assembly, $tempDir) = @_;
 	
 	my $tempBedFile = $rmskFile .$$. ".temp.bed"; #temp bed file used here
+	if($tempDir){
+		$tempBedFile = s/(.*)\//$tempDir/;
+	}
 		
 	open(RMSK, "<$rmskFile") or die "couldn't open $rmskFile\n";
 	open(BED, ">$tempBedFile") or die "couldn't open $tempBedFile\n";

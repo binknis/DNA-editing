@@ -1,7 +1,13 @@
+#To do: 
+#If BLAST works smoothly for large SINE fams, blastFormatter::delZeroIdentityHSPs can and should be removed (BLAST used to produce some problematic output for some, usually large, files)
+
 use strict;
 use Bio::SearchIO;
 use Bio::Root::Root;
 use File::Path qw(mkpath); 
+
+use FindBin;
+use lib "$FindBin::Bin";  # use the parent directory of analysis_scripts directory from where this is run
 
 use ProcessAlignmentByLength;
 use blastFormatter; 
@@ -17,9 +23,18 @@ sub AnalyzeBlast {
 	my ($taxa_r, $args_r) = @_; 
 	my ($organism, $class, $family, $name) = ($taxa_r->{"org"}, $taxa_r->{"class"}, $taxa_r->{"fam"}, $taxa_r->{"name"});
 	
+	
 	my $blastFile = $args_r->{"dataDir"} . "/$organism/$class/results/blasts/$family/$name".".gz"; 
+	
+	# if(-e $blastFile){
+		# print $blastFile ."\n"; 
+	# } elsif (){
+		# print $blastFile ."\n"; 
+	# } else {
+		# die "zipped and non-zipped don't exist!\n";
+	# }
 	open(my $pipeFromZippedBlast, "gunzip -c $blastFile |") or die "open gzipped $blastFile\n"; 
-	my $in = new Bio::SearchIO(-format => 'blast', -fh   => $pipeFromZippedBlast);
+	my $in = new Bio::SearchIO(-format => $args_r->{"bioperl_blast_read_format"}, -fh   => $pipeFromZippedBlast);
 	my $ppid = getppid();
 	my $progress = "progress_".$organism."_".$family."_".$ppid.".txt"; #create unique progress handle using PPID
 	open(my $progress_handle,">>$progress");

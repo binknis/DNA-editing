@@ -347,7 +347,7 @@ unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #The findMotifs.pl script wasn't adap
 }
 
 ### Advanced analyses - analysisSubs ###
-analysisSubs::getEditedPositionsInCons($siteListName_G); 
+analysisSubs::getEditedPositionsInCons($siteListName_G); #*** add arg to disable
 analysisSubs::getEditedPositionsInCons($siteListName_A); 
 
 getNucStats($trackDir, $mmS, $siteListName_G); 
@@ -355,7 +355,7 @@ getNucStats($trackDir, $mmT, $siteListName_A);
 
 
 #Get best sources for each target element
-my $STreversed = 0; 
+my $STreversed = 0; #*** add arg 
 my $transform = 0; 
 my $trimmed = 0; 
 analysisSubs::getBestSources($graphFile, $seqFa_G_file, $seqFa_A_file, $STreversed, $transform, $trimmed) unless $DONT_GET_BEST_SOURCES; 
@@ -543,7 +543,7 @@ sub getNucStats {
 	my $range = 7; 
 	my $freqFile = $trackDir . "rawFreq_".$suffix.".txt";
 	my $freqPerSeqFile = $trackDir . "freqPerSeq_".$suffix.".txt"; 
-	my $no_CpG = 0; 
+	my $no_CpG = 0; #*** add as arg
 	analysisSubs::getNucFrequencyPerPosAllSeqs($seqFile, $siteListFile, $range, 1, 0, $freqFile, $no_CpG, $freqPerSeqFile); #(my $seqFile, my $siteListFile, my $range, my $normalize, my $reverse_editing, my $outfile, my $no_CpG, my $freqPerSeqFile)
 	
 	my $hash_ref; 
@@ -616,7 +616,7 @@ sub getSubfamsFromIntervalFile{
 	my %c2sf = (); 
 	if(-d $invlPath){ #Interval dir was specified 
 		$invlFile = $invlPath ."/". $org . ".interval"; 
-	} elsif ($invlPath !~ /.bed(.gz)?$/)else { #bed file 
+	} elsif ($invlPath !~ /.bed(.gz)?$/) { #bed file 
 		$invlFile = $invlPath;
 	}
 	
@@ -624,10 +624,11 @@ sub getSubfamsFromIntervalFile{
 		$invlFile = $invlFile.".gz"; 
 	}
 	
+	my $invl_fh; 
 	if($invlFile =~ /\.gz$/){
-		open(my $invl_fh, "gunzip -c $invlFile |") or die "open zipped $invlFile failed\n"; 
+		open($invl_fh, "gunzip -c $invlFile |") or die "open zipped $invlFile failed\n"; 
 	} else {
-		open(my $invl_fh, $invlFile) or die "open $invlFile failed\n"; 
+		open($invl_fh, $invlFile) or die "open $invlFile failed\n"; 
 	}
 	
 	while(my $l = <$invl_fh>){

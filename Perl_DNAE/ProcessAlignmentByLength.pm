@@ -1,5 +1,8 @@
 package ProcessAlignmentByLength;
 use strict;
+use FindBin;
+use lib "$FindBin::Bin";  # use the parent directory of analysis_scripts directory from where this is run
+
 use FindClustersByLength;
 
 sub process_alignment_by_length
@@ -7,7 +10,7 @@ sub process_alignment_by_length
 	(my $hsp_ref, my $query_name, my $hit_name, my $taxa_r, my $args_r) = @_; 
 	my $hsp = $$hsp_ref;
 	my $len = int( ( $hsp->length('query') + $hsp->length('hit') ) / 2 );
-
+	my $allMMs = $args_r->{"allmms"}; 
 	if ( $hsp->strand('query') != $hsp->strand('hit') )
 	{
 		print

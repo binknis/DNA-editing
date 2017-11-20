@@ -4,16 +4,21 @@
  #If classes are specified (after all args) then retain only those classes. Otherwise, run for all classes in organisms. 
  
  use strict; 
- use lib "/home/alu/binknis/Perl_DNAE"; 
- use lib "$ENV{HOME}/Perl_DNAE"; 
- use Time::HiRes;
+ # use lib "/home/alu/binknis/Perl_DNAE"; 
+ # use lib "$ENV{HOME}/Perl_DNAE"; 
+ use FindBin;
+ use lib "$FindBin::Bin";  # use the parent directory of analysis_scripts directory from where this is run
+ use lib "$FindBin::Bin/analysis_scripts"; #because this file is in analysis_scripts, this includes that directory
  use removeIndexFiles; 
+ use AnalyzeBlastByLength; 
+ 
+ use Time::HiRes;
  use File::Path qw(mkpath); 
  use File::Copy;
  use IO::Compress::Gzip qw(gzip);
  use IO::Uncompress::Gunzip qw(gunzip);
- use AnalyzeBlastByLength; 
  use Getopt::Long;
+
  
 #Command line parameter default values
 my $dataDir = $ENV{HOME} ."/Data";
@@ -24,6 +29,13 @@ my $th_l = 4;
 my $th_h = 5;
 my $cores = 12;
 my $allMMs = 1;
+my $makeblastdb_path = ''; 
+my $blastn_path = ''; 
+my $useLegacyBlast = 0; 
+my $more_blast_cmdline_args = ''; #e.g.: "-num_alignments 100" to restrict number of alignments (can save time)
+my $blastEvalue = "1e-50"; 
+my $useXMLforBlast = 0; #I read that XML BLAST output is more stable with different BioPerl releases than the text format. However, files are ~40% larger and parsing slower, hence disabled by default. 
+my $override_blasts = 0; #override existing blast outfiles
 my @classes = (); 
  
  GetOptions ("datadir|dataDir=s"  => \$dataDir,
@@ -35,13 +47,25 @@ my @classes = ();
 	"cores=i" => \$cores,
 	"allmms!" => \$allMMs,
 	
+	"makeblastdb_path=s" => \$makeblastdb_path,
+	"blastn_path=s" => \$blastn_path,
+	"useLegacyBlast!" => \$useLegacyBlast,
+	"blastEvalue=s" => \$blastEvalue,
+	"usexml!" => \$useXMLforBlast,
+	"blastargs=s" => \$more_blast_cmdline_args,
+	
+	"override_blasts" => \$override_blasts,
+	
 	"classes=s" => \@classes)
 or die("Error in command line arguments\n");
  
 @classes = sort(split(/,/,join(',',@classes))); #allow comma-separated list
  
  my %args = ();
- $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs; 
+ $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs;
+
+ $args{"bioperl_blast_read_format"} = $useXMLforBlast ? "blastxml" : "blast"; #set blast parser arg for Bioperl
+ 
  
  ######################
  #######  MAIN   ######
@@ -133,25 +157,54 @@ foreach my $class (@classList) {
 		my @nameList =  sort{lc($a) cmp lc($b)}(readdir(NAME));
 		shift(@nameList) while ($nameList[0] =~ /^\./); 
 		closedir(NAME);
+		
+		
 		foreach my $name (@nameList) {
 			next if ($name =~ /\.n(hr|in|sd|si|sq|nd|ni|tm)$/); #skip blast index files (for robustness)
 			### BLAST ###
 			my $blast_fileName = $resDir ."/blasts/$family/$name"; 
 			my $blast_archive = $blast_fileName . ".gz"; 
-			my $doNotBlast = (-e $blast_archive); 
-			if ($doNotBlast){ #BLAST file exists - uncompress it
+			my $blastOutExists = (-e $blast_archive); 
+			if ($blastOutExists and not $override_blasts){ #BLAST file exists - uncompress it
 				#gunzip $blast_archive => $blast_fileName || die "gunzip failed for $blast_archive\n"; #*** changed for reading from pipe
 			}
 			else{ #run BLAST
 				&write_progress($organism, "\t$name: Blasting ... "); 
 				@start = Time::HiRes::gettimeofday(); #keep start time
 				
-				my $formatdb = "formatdb -i $nameDir/$name -p F -o T"; 
-				$formatdb =~ s/\(/\\\(/g; $formatdb =~ s/\)/\\\)/g; #add backslashes before "(" and ")" symbols. 
-				system($formatdb); 
-				my $blast = "blastall -p blastn -d $nameDir/$name -i $nameDir/$name -e 1e-50 -S 1 -F F -v 0 -a $cores > $blast_fileName";
-				$blast =~ s/\(/\\\(/g; $blast =~ s/\)/\\\)/g; #add backslashes before "(" and ")" symbols. 
-				system($blast);
+				my $makeblastdb_cmd; 
+				my $blastn_cmd; 
+				
+				if($useLegacyBlast){ #Use blastall
+					#set default paths for legacy blast, unless specified full-path
+					$makeblastdb_path = "formatdb" unless $makeblastdb_path; 
+					$blastn_path = "blastall" unless $blastn_path; 
+					
+					$makeblastdb_cmd = "$makeblastdb_path -i $nameDir/$name -p F -o T"; 
+					$blastn_cmd = "$blastn_path -p blastn -d $nameDir/$name -i $nameDir/$name -e $blastEvalue -S 1 -F F -v 0 -a $cores | gzip > $blast_archive";
+					# print "1a. makeblastdb_cmd: $makeblastdb_cmd\n"; #***
+					# print "1a. blastn_cmd: $blastn_cmd\n"; #***
+				} else { #Default: Use BLAST+
+					$makeblastdb_path = "makeblastdb" unless $makeblastdb_path; 
+					$blastn_path = "blastn" unless $blastn_path; 
+				
+					$makeblastdb_cmd = "$makeblastdb_path -in $nameDir/$name -dbtype nucl"; 
+					if($useXMLforBlast){ #use XML output (else: default of text output)
+						$more_blast_cmdline_args .= " -outfmt 5"; 
+					}
+					$blastn_cmd = "$blastn_path -query $nameDir/$name  -db $nameDir/$name  -evalue $blastEvalue -strand plus -num_descriptions 0 -dust no -soft_masking false -num_threads $cores" . " " . $more_blast_cmdline_args . " | gzip > ". $blast_archive;
+					# print "1b. makeblastdb_cmd: $makeblastdb_cmd\n"; #***
+					# print "1b. blastn_cmd: $blastn_cmd\n"; #***
+				} 
+				
+				#Run BLAST commands
+				
+				$makeblastdb_cmd =~ s/\(/\\\(/g; $makeblastdb_cmd =~ s/\)/\\\)/g; #add backslashes before "(" and ")" symbols. 
+				# print "2. makeblastdb_cmd: $makeblastdb_cmd\n"; #***
+				system($makeblastdb_cmd); 
+				$blastn_cmd =~ s/\(/\\\(/g; $blastn_cmd =~ s/\)/\\\)/g; #add backslashes before "(" and ")" symbols. 
+				# print "2. blastn_cmd: $blastn_cmd\n"; #***
+				system($blastn_cmd);
 				
 				#write elapsed blast time
 				@end = Time::HiRes::gettimeofday(); 
@@ -170,8 +223,8 @@ foreach my $class (@classList) {
 				print "formatted $organism $class $family $name\n" if $formatted;
 			}
 			#compress, rename and move Blast.txt to family's results dir
-			#(Needed only if BLAST was created now or it was formatted)
-			if (not $doNotBlast){  
+			#***Not needed anymore for new blasts, see what happens for BLAST formatting
+			if (not $blastOutExists and -e $blast_fileName){  
 				gzip $blast_fileName => $blast_archive or print "gzip failed for $organism $class $family $blast_fileName\n";
 			}
 			unlink($blast_fileName);
@@ -181,6 +234,9 @@ foreach my $class (@classList) {
 			$elapsedTime = &timeDiff(\@start, \@end); 
 			&write_progress($organism, "Analyzed in ".$elapsedTime."\n"); 
 		}
+		
+		
+		
 	}
 }
 

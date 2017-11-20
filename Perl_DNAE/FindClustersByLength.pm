@@ -19,6 +19,8 @@
 package FindClustersByLength;
 use strict;
 use Math::NumberCruncher; 
+use Fcntl qw(:flock SEEK_END);
+
 my @mm;
 my @mm_parent; 
 my @ind;
@@ -132,7 +134,7 @@ sub find_clusters_by_length
 	foreach my $pval(@pvals){
 		for (my $th=$th_l; $th<=$th_h; $th++){
 			if ($num_clusts{$pval}{$th} > 0){ #cluster found
-				write_cluster_tabular($dataDir, $pval, $th, $total_prob{$pval}{$th}, $num_clusts{$pval}{$th}, $mmType, $mmCounts);
+				write_cluster_tabular($dataDir, $pval, $th, $total_prob{$pval}{$th}, $num_clusts{$pval}{$th}, $mmType, $mmCounts, $args_r);
 			}
 		}
 	}
@@ -156,7 +158,7 @@ sub min
 #	2. All output is in tabular format - one tuple per HSP
 sub write_cluster_tabular
 {	
-	(my $dataDir, my $pval, my $th, my $total_prob, my $num_clusts, my $mmType, my $mmCounts) = @_; 
+	(my $dataDir, my $pval, my $th, my $total_prob, my $num_clusts, my $mmType, my $mmCounts, my $args_r) = @_; 
 		
 	#Build tuple for output
 	#The fields: assembly[1], taxa (org, class, fam, subfam)[2-5], mismatch-type, 
@@ -204,9 +206,30 @@ sub write_cluster_tabular
 	#create & open file & print output
 	my $cluster_name;
 	$cluster_name = ">>$dataDir/$organism/$class/results/". (uc $mmType) . "/clusters_" . $organism . "_" . $class . "_"	. $family . "_"	. $pval . "_"	. $th . ".tab";
-	open( CLUSTS, $cluster_name );
-	print CLUSTS $tuple ."\n"; 
-	close(CLUSTS);
+	
+	if($args_r->{"parallel_per_subfam"}){ #parallel write - must lock
+		open(my $clust_fh, $cluster_name) or die "Can't open $cluster_name: $!";
+		lock($clust_fh);
+		print $clust_fh $tuple ."\n";
+		unlock($clust_fh);
+	} else { #sequential - no need to lock
+		open( my $clust_fh, $cluster_name ) or die "Can't open $cluster_name: $!";
+		print $clust_fh $tuple ."\n"; 
+		close($clust_fh);
+	}
+}
+
+
+sub lock {
+	my ($fh) = @_;
+	flock($fh, LOCK_EX) or die "Cannot lock cluster file - $!\n";
+	# and, in case someone appended while we were waiting...
+	seek($fh, 0, SEEK_END) or die "Cannot seek - $!\n";
+}
+
+sub unlock {
+	my ($fh) = @_;
+	flock($fh, LOCK_UN) or die "Cannot unlock cluster file - $!\n";
 }
 
 1;

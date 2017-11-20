@@ -27,7 +27,7 @@ my $pval_h = 2;
 my $pval_l = 5;
 my $th_l = 4;
 my $th_h = 5;
-my $cores = 12;
+my $cores = 0; #if set, overrides num cores for ALL parallel parameters 
 my $allMMs = 1;
 my $makeblastdb_path = ''; 
 my $blastn_path = ''; 
@@ -36,6 +36,8 @@ my $more_blast_cmdline_args = ''; #e.g.: "-num_alignments 100" to restrict numbe
 my $blastEvalue = "1e-50"; 
 my $useXMLforBlast = 0; #I read that XML BLAST output is more stable with different BioPerl releases than the text format. However, files are ~40% larger and parsing slower, hence disabled by default. 
 my $override_blasts = 0; #override existing blast outfiles
+my $parallel_per_subfam = 0; #set with number of cores if want parallel
+my $num_threads_blastn = 12; 
 my @classes = (); 
  
  GetOptions ("datadir|dataDir=s"  => \$dataDir,
@@ -44,7 +46,6 @@ my @classes = ();
 	"pval_l=s" => \$pval_l,
 	"th_l=i" => \$th_l,
 	"th_h=i" => \$th_h,
-	"cores=i" => \$cores,
 	"allmms!" => \$allMMs,
 	
 	"makeblastdb_path=s" => \$makeblastdb_path,
@@ -56,15 +57,25 @@ my @classes = ();
 	
 	"override_blasts" => \$override_blasts,
 	
+	"cores=i" => \$cores,
+	"blastn_threads=i" => \$num_threads_blastn,
+	"parallel_per_subfam=i" => \$parallel_per_subfam,
+	
 	"classes=s" => \@classes)
 or die("Error in command line arguments\n");
  
 @classes = sort(split(/,/,join(',',@classes))); #allow comma-separated list
  
  my %args = ();
- $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs;
+$args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs;
+$args{"parallel_per_subfam"} = $parallel_per_subfam; 
+ 
+$args{"bioperl_blast_read_format"} = $useXMLforBlast ? "blastxml" : "blast"; #set blast parser arg for Bioperl
 
- $args{"bioperl_blast_read_format"} = $useXMLforBlast ? "blastxml" : "blast"; #set blast parser arg for Bioperl
+if($cores > 0){ #if cores was set, need to override all parallel args
+	$parallel_per_subfam = $cores;
+	$num_threads_blastn - $cores; 
+}
  
  
  ######################
@@ -77,7 +88,6 @@ my $elapsedTime;
 my @start; 
 my @end; 
 
-$cores = 1 if ($cores == 0); #set 1 as default for core amount for blasts. 
 my @mmDirs = ("GA", "CT", "GC", "GT", "CA", "TA"); #GA is equivalent of AG in this algorithm
 
 #create progress_$organism file
@@ -157,10 +167,10 @@ foreach my $class (@classList) {
 		my @nameList =  sort{lc($a) cmp lc($b)}(readdir(NAME));
 		shift(@nameList) while ($nameList[0] =~ /^\./); 
 		closedir(NAME);
-		
-		
+		@nameList = grep { $_ !~ /\.n(hr|in|sd|si|sq|nd|ni|tm)$/ } @nameList; #remove index files
+				
 		foreach my $name (@nameList) {
-			next if ($name =~ /\.n(hr|in|sd|si|sq|nd|ni|tm)$/); #skip blast index files (for robustness)
+		
 			### BLAST ###
 			my $blast_fileName = $resDir ."/blasts/$family/$name"; 
 			my $blast_archive = $blast_fileName . ".gz"; 
@@ -181,7 +191,7 @@ foreach my $class (@classList) {
 					$blastn_path = "blastall" unless $blastn_path; 
 					
 					$makeblastdb_cmd = "$makeblastdb_path -i $nameDir/$name -p F -o T"; 
-					$blastn_cmd = "$blastn_path -p blastn -d $nameDir/$name -i $nameDir/$name -e $blastEvalue -S 1 -F F -v 0 -a $cores | gzip > $blast_archive";
+					$blastn_cmd = "$blastn_path -p blastn -d $nameDir/$name -i $nameDir/$name -e $blastEvalue -S 1 -F F -v 0 -a $num_threads_blastn | gzip > $blast_archive";
 					# print "1a. makeblastdb_cmd: $makeblastdb_cmd\n"; #***
 					# print "1a. blastn_cmd: $blastn_cmd\n"; #***
 				} else { #Default: Use BLAST+
@@ -192,7 +202,7 @@ foreach my $class (@classList) {
 					if($useXMLforBlast){ #use XML output (else: default of text output)
 						$more_blast_cmdline_args .= " -outfmt 5"; 
 					}
-					$blastn_cmd = "$blastn_path -query $nameDir/$name  -db $nameDir/$name  -evalue $blastEvalue -strand plus -num_descriptions 0 -dust no -soft_masking false -num_threads $cores" . " " . $more_blast_cmdline_args . " | gzip > ". $blast_archive;
+					$blastn_cmd = "$blastn_path -query $nameDir/$name  -db $nameDir/$name  -evalue $blastEvalue -strand plus -num_descriptions 0 -dust no -soft_masking false -num_threads $num_threads_blastn" . " " . $more_blast_cmdline_args . " | gzip > ". $blast_archive;
 					# print "1b. makeblastdb_cmd: $makeblastdb_cmd\n"; #***
 					# print "1b. blastn_cmd: $blastn_cmd\n"; #***
 				} 
@@ -211,32 +221,58 @@ foreach my $class (@classList) {
 				$elapsedTime = &timeDiff(\@start, \@end); 
 				&write_progress($organism, "Blasted in ".$elapsedTime."\n");
 			}
-			### Analyze Blast with all parameters ###
-			@start = Time::HiRes::gettimeofday(); #keep start time
-			&write_progress($organism, "Analyzing $name ... ");
 			
-			my %taxa = ("org" => $organism, "class" => $class, "fam" => $family, "name" => $name); 
-			
-			my $formatted = AnalyzeBlastByLength::AnalyzeBlast(\%taxa, \%args); 
-	
-			if($formatted){ #save log if formatted
-				print "formatted $organism $class $family $name\n" if $formatted;
-			}
-			#compress, rename and move Blast.txt to family's results dir
-			#***Not needed anymore for new blasts, see what happens for BLAST formatting
-			if (not $blastOutExists and -e $blast_fileName){  
-				gzip $blast_fileName => $blast_archive or print "gzip failed for $organism $class $family $blast_fileName\n";
-			}
-			unlink($blast_fileName);
-			
-			#write analyze end time
-			@end = Time::HiRes::gettimeofday(); 
-			$elapsedTime = &timeDiff(\@start, \@end); 
-			&write_progress($organism, "Analyzed in ".$elapsedTime."\n"); 
 		}
 		
-		
-		
+		if($parallel_per_subfam){
+			my %kids; #For parallel
+			{
+			  while (@nameList and keys %kids < $parallel_per_subfam) {
+				my $name = shift @nameList; 
+				my %taxa = ("org" => $organism, "class" => $class, "fam" => $family, "name" => $name); 
+				$kids{forkAnalyzeBlastPerName(\%taxa, \%args, $resDir)} = "active";
+			  }
+			  {
+				my $pid = waitpid(-1, 0); #wait for any child process
+				if ($pid == -1) { #no child process
+				  %kids = ();
+				} else { #a child finished (any child)
+				  delete $kids{$pid};
+				}
+			  }
+			  redo if @nameList or %kids;
+			}
+		} else { #original code - nonparallel (orginally was in the loop with BLAST)
+			foreach my $name (@nameList) {
+				my $blast_fileName = $resDir ."/blasts/$family/$name"; 
+				my $blast_archive = $blast_fileName . ".gz"; 
+				my $blastOutExists = (-e $blast_archive); 
+			
+				### Analyze Blast with all parameters ###
+				@start = Time::HiRes::gettimeofday(); #keep start time
+				&write_progress($organism, "Analyzing $name ... ");
+				
+				my %taxa = ("org" => $organism, "class" => $class, "fam" => $family, "name" => $name); 
+				
+				my $formatted = AnalyzeBlastByLength::AnalyzeBlast(\%taxa, \%args); 
+
+				if($formatted){ #save log if formatted
+					print "formatted $organism $class $family $name\n" if $formatted;
+				}
+				#compress, rename and move Blast.txt to family's results dir
+				#***Not needed anymore for new blasts, see what happens for BLAST formatting
+				if (not $blastOutExists and -e $blast_fileName){  
+					gzip $blast_fileName => $blast_archive or print "gzip failed for $organism $class $family $blast_fileName\n";
+				}
+				unlink($blast_fileName);
+				
+				#write analyze end time
+				@end = Time::HiRes::gettimeofday(); 
+				$elapsedTime = &timeDiff(\@start, \@end); 
+				&write_progress($organism, "Analyzed in ".$elapsedTime."\n"); 
+			}
+		}
+				
 	}
 }
 
@@ -246,7 +282,51 @@ removeIndexFiles::remove($organism, \@classList);
 ######################
 #######  SUBS   ######
 ######################
+
+sub forkAnalyzeBlastPerName{
+	(my $taxa_r, my $args_r, my $resDir) = @_; 
+	
+	my $pid = fork;
+	return $pid if $pid; ### parent - return PID ###
+	#### child ###
+	unless (defined $pid) { #fork failed
+		warn "cannot fork: $!";
+		return 0;
+	}
+	#What to do in child - START
+	
+	### Analyze Blast with all parameters ###
+	my @start = Time::HiRes::gettimeofday(); #keep start time
+	&write_progress($taxa_r->{"org"}, "Analyzing ".$taxa_r->{"name"}." ... ");
+	
+	my $formatted = AnalyzeBlastByLength::AnalyzeBlast($taxa_r, $args_r); 
+
+	if($formatted){ #save log if formatted
+		print "formatted ".$taxa_r->{"org"}." ".$taxa_r->{"class"}." ".$taxa_r->{"fam"}." ".$taxa_r->{"name"}."\n" if $formatted;
+	}
+	
+	###These lines related to BLAST may be unnecessary
+	#compress, rename and move Blast.txt to family's results dir
+	my $blast_fileName = $resDir ."/blasts/".$taxa_r->{"fam"}."/".$taxa_r->{"name"}; 
+	my $blast_archive = $blast_fileName . ".gz"; 
+	my $blastOutExists = (-e $blast_archive); 
+	if (not $blastOutExists and -e $blast_fileName){  
+		gzip $blast_fileName => $blast_archive or print "gzip failed for".$taxa_r->{"org"}." ".$taxa_r->{"class"}." ".$taxa_r->{"fam"}." ".$taxa_r->{"name"}."\n";
+	}
+	unlink($blast_fileName);
+	
+	#write analyze end time
+	my @end = Time::HiRes::gettimeofday(); 
+	my $elapsedTime = &timeDiff(\@start, \@end); 
+	&write_progress($taxa_r->{"org"}, "Analyzed in ".$elapsedTime."\n"); 
+	
+	#What to do in child - END
+	exit 0;
+} 
  
+ 
+ 
+
 sub getClasses{
 	my $classes_ref = shift; 
 	my $organism = shift; 

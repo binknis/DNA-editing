@@ -139,7 +139,7 @@ unless($intervalFormat){
 		$fastaFile = $tempFaFile;
 	}
 }
-print "intervalFomrat: $intervalFormat. fastaFile: $fastaFile. repeatIntervalFile: $repeatIntervalFile. tempBedFile: $tempBedFile. tempFaFile: $tempFaFile\n";
+# print "intervalFomrat: $intervalFormat. fastaFile: $fastaFile. repeatIntervalFile: $repeatIntervalFile. tempBedFile: $tempBedFile. tempFaFile: $tempFaFile\n";
 
 ### Create "familyTree", i.e. tree describing the hierarchy of Class/Family/Name of all sequences ###
 open(SEQDATA,"<$repeatIntervalFile") || die ("couldn't open description file"); 

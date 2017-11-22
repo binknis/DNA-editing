@@ -32,10 +32,18 @@
 #Possible to-do list: 
 #1. loop through pmotif and pmotif2.
 
+### load libs.
 use strict; 
 use Cwd;
 use File::Path qw(mkpath);
 use Getopt::Long;
+
+use FindBin;
+my $perlDir = "$FindBin::Bin/.."; # locate this script
+use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
+use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
+use getAll; 
+use analysisSubs; 
 
 ####################################
 #######  COMMAND LINE ARGS  ########
@@ -57,14 +65,15 @@ my $intervalFile = '';
 my $intervalDir = ''; #interval or BED file (used to extract subfams per element when subfams of S and T may be different)  #"/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; # my $intervalDir = "/private3/Dropbox/users/binknis_data/Avian/rawdata/intervals"; #interval dir (for Avian genome project)
 
 my $SUBFAM_SELECTION_NUC = 'S'; #if there are different subfams - use G or A's subfam when single annotation is needed
-my $DONT_GET_BEST_SOURCES = 1; #skip last time-consuming step that BLASTs to find best match (good to disable for large intermediate datasets)
+my $DONT_GET_BEST_SOURCES = 0; #skip last time-consuming step that BLASTs to find best match (good to disable for large intermediate datasets)
+my $SKIP_POS_IN_CONS = 0;
 
 my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited elements
  
  GetOptions ("dataDir|datadir=s"  => \$dataDir,
 	"organism|org=s" => \$org,
-	"class=s" => $class,
-	"family=s" => $family,
+	"class=s" => \$class,
+	"family=s" => \$family,
 	"pval=s" => \$pval,
 	"th=i" => \$th,
 	"cores=i" => \$cores,
@@ -77,21 +86,16 @@ my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited 
 	
 	"interval_file=s" => \$intervalFile,
 	"interval_dir=s" => \$intervalDir,
-	"skip_best_source!" => \$DONT_GET_BEST_SOURCES,
+	"skip_best_sources!" => \$DONT_GET_BEST_SOURCES,
+	"skip_pos_in_cons!" => \$SKIP_POS_IN_CONS,
 	"subfam_selection_nuc=s" => \$SUBFAM_SELECTION_NUC
 	)
 or die("Error in command line arguments\n");
  
-# print $pval ."\n"; exit; #***
+# print "$class $family\n"; exit; #***
 ####################################
 ####################################
-### load libs. Optionally as arg
-use FindBin;
-my $perlDir = "$FindBin::Bin/.."; # locate this script
-use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
-use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
-use getAll; 
-use analysisSubs; 
+
 
 ### Modify and parse input args
 $pval = "1e-" . $pval if $pval =~ /^\d+$/; #fix format of pval input (enables inputting int instead of scientific notation)
@@ -127,6 +131,7 @@ my $f_type;  my $retain; my $f_pairs=""; my $f_seqsG=""; my $f_seqsA=""; my $f_s
 my $suffix = $org . "_" . $class . "_" . $family . "_" . $pval . "_" . $th; 
 my $resDir = $dataDir . "/" . $org . "/" . $class . "/results"; 
 my $cluster_file = $resDir ."/". $mm . "/clusters_" . $suffix .".tab";
+# print "cluster_file: $cluster_file. Suffix: $suffix\n"; exit; #***	
 exit if (not -e $cluster_file or -z $cluster_file); #don't parse if cluster's file is empty (avoids creating empty track files). 
 
 #Track dir ("trackDir")
@@ -330,25 +335,27 @@ close($inDeg_fh);
 my $seqFa_G_file = $trackDir . "/seqFasta_".$mmS."_".$suffix.".fa";
 my $seqFa_A_file = $trackDir . "/seqFasta_".$mmT."_".$suffix.".fa"; 
 unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){
-	analysisSubs::getFastaFromCoords($siteListName_G, $seqFa_G_file, 0, 0, 0, 0);
-	analysisSubs::getFastaFromCoords($siteListName_A, $seqFa_A_file, 0, 0, 0, 0);
+	analysisSubs::getFastaFromCoords($dataDir, $siteListName_G, $seqFa_G_file, 0, 0, 0, 0);
+	analysisSubs::getFastaFromCoords($dataDir, $siteListName_A, $seqFa_A_file, 0, 0, 0, 0);
 }
 else{
-	analysisSubs::getFastaFromCoords($siteListName_G, $seqFa_G_file, 0, 0, 0, $coordsToSubfam);
-	analysisSubs::getFastaFromCoords($siteListName_A, $seqFa_A_file, 0, 0, 0, $coordsToSubfam);
+	analysisSubs::getFastaFromCoords($dataDir, $siteListName_G, $seqFa_G_file, 0, 0, 0, $coordsToSubfam);
+	analysisSubs::getFastaFromCoords($dataDir, $siteListName_A, $seqFa_A_file, 0, 0, 0, $coordsToSubfam);
 }
 
 ### Find Context Preference Motifs of edited sites ###
 unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #The findMotifs.pl script wasn't adapted for this option. 
 	for my $pmotif (@pmotifs){
-		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif $mm $mmS $trackDir");
-		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $org $class $family $pval $th $pmotif $mm $mmT $trackDir"); 
+		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $dataDir $org $class $family $pval $th $pmotif $mm $mmS $trackDir");
+		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $dataDir $org $class $family $pval $th $pmotif $mm $mmT $trackDir"); 
 	}
 }
 
 ### Advanced analyses - analysisSubs ###
-analysisSubs::getEditedPositionsInCons($siteListName_G); #*** add arg to disable
-analysisSubs::getEditedPositionsInCons($siteListName_A); 
+unless($SKIP_POS_IN_CONS){
+	analysisSubs::getEditedPositionsInCons($siteListName_G); #*** add arg to disable
+	analysisSubs::getEditedPositionsInCons($siteListName_A); 
+}
 
 getNucStats($trackDir, $mmS, $siteListName_G); 
 getNucStats($trackDir, $mmT, $siteListName_A); 

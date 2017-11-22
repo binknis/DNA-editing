@@ -8,15 +8,19 @@
 use strict;
 use Math::NumberCruncher; 
 use Bio::SeqIO;
-my $perlDir = $ENV{HOME} ."/Perl_DNAE"; 
 
-( my $org, my $class, my $family, my $pvalue, my $th, my $pmotif, my $mm, my $GA , my $trackDir ) = @ARGV;
+use FindBin;
+use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
+use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
+my $perlDir = "$FindBin::Bin/..";
+
+(my $dataDir, my $org, my $class, my $family, my $pvalue, my $th, my $pmotif, my $mm, my $GA , my $trackDir ) = @ARGV;
 
 #set defaults
 $GA = 'A' if ($GA eq '0' or $GA eq "");
 $mm = "GA" if ($mm eq '0' or $mm eq "");
 ### get Nuc probs in family ###
-my $nuc_name = "../Data/$org/$class/db/Nuc_$family.txt";
+my $nuc_name = "$dataDir/$org/$class/db/Nuc_$family.txt";
 #print "name = $nuc_name\n";
 open(NUC, $nuc_name) or die "no nucs: $nuc_name\n";
 #create nuc probability hash: {fam} = arr of A C G T probs.
@@ -34,7 +38,7 @@ while (my $line = <NUC>)
 ### Output files ###
 $pvalue = '1e-' . $pvalue unless $pvalue =~ /1e-/; 
 my $suffix = $org ."_". $class ."_". $family ."_". $pvalue ."_". $th; 
-my $dir = "../Data/".$org."/". $class ."/results";
+my $dir = "$dataDir/".$org."/". $class ."/results";
 $dir .= "/Tracks/tracks_". $suffix . "/". $mm;
 $dir = $trackDir if $trackDir;
 # print "my trackDr: ".$trackDir ."\n"; #***

@@ -1899,8 +1899,9 @@ sub calcBlastMMfreqs{
 
 # wrapper for getBlastMMfreqs - for whole directory
 #$out : 0 - directory (will create file for each subfam) or 1 - one file
+#Note: added $dataDir
 sub calcBMMForg{
-	(my $org, my $class, my $out) = @_;
+	(my $dataDir, my $org, my $class, my $out) = @_;
 	my $home = $ENV{"HOME"};
 	my $dirPrefix = "BlastStats"; 
 	unless ($out){ #default - create output directory in home directory 
@@ -1910,7 +1911,7 @@ sub calcBMMForg{
 	my $coordsOut = 0; 
 	my $multiFile = (-d $out ? 1 : 0); #if output file (0) or directory (1) specified in input
 	my $append = ($multiFile ? 0 : 1); #append only if it's not multifile
-	my $blastDir = join ('/', $home, "Data" , $org, $class, "results", "blasts");
+	my $blastDir = join ('/', $dataDir , $org, $class, "results", "blasts"); 
 	my $fams = getAll::families($org, $class); 
 	foreach my $fam (@$fams){
 		my $outFamDir = join ('/', $out, $dirPrefix, $org, $class, $fam); 
@@ -2250,7 +2251,8 @@ sub testCodonChangesPerSeq{
 
 #Function: Get 
 #Output: orfStats file
-#Note: skips proteins that have introns (or for some other reason are interrupted (otherwise, the downstream function getCodonChangesPerSeq can generate errors)
+#Note: 	1. skips proteins that have introns (or for some other reason are interrupted (otherwise, the downstream function getCodonChangesPerSeq can generate errors)
+#		2. IMPORTANT: Not currently built to run generically... (only consts, no input args)
 sub getConsAndPosHists {
 	my $mm = "GA"; 
 	my $GA = "A"; 
@@ -2338,10 +2340,16 @@ sub getConsAndPosHists {
 #Output: Fasta file with sequences (1 per family if flag is on)
 #Notes: 1. coord filename must contain the suffix created by createTrackFiles.pl (Org, class, fam, pval, th)
 #		2. subfam names with slashes and/or question-marks will have them retained in deflines but are substituted with underscores in filenames. 
+#		3. Added dataDir as arg (instead of ../Data)
 # use Data::Dumper; 
 #*** ADD option to read from zipped file
+
 sub getFastaFromCoords{
-	(my $coordFile, my $fastaOut, my $columnToGet, my $outFormatFlag, my $filePerSubFamOutput, my $coordsToSubfam) = @_; 
+	(my $dataDir, my $coordFile, my $fastaOut, my $columnToGet, my $outFormatFlag, my $filePerSubFamOutput, my $coordsToSubfam) = @_; 
+	unless(-d $dataDir){
+		print "Error: invalid dir arg to analysisSubs::getFastaFromCoords. First arg must be dataDir!\n";
+	}
+	
 	# print Dumper($coordsToSubfam);
 	my $coords; 
 	my $coordToGet; 
@@ -2379,9 +2387,9 @@ sub getFastaFromCoords{
 	$fastaOut =~ s/\.fa$//; #to avoid adding .fa to existent .fa suffix
 	$outStream = Bio::SeqIO->new( -file => ">".$fastaOut.".fa",  -format => 'fasta' ) unless $filePerSubFamOutput;
 	foreach my $subfam (sort keys %subfamToCoords){
-		my $dbFile = "../Data/".$org."/".$class."/db/files_".$fam."/Seq_".$subfam; 
+		my $dbFile = $dataDir."/".$org."/".$class."/db/files_".$fam."/Seq_".$subfam; 
 		if($coordsToSubfam){ #only one file per family in input DB
-			$dbFile = "../Data/".$org."/".$class."/db/files_".$fam."/Seq_".$fam; 
+			$dbFile = $dataDir."/".$org."/".$class."/db/files_".$fam."/Seq_".$fam; 
 		}
 		if ($filePerSubFamOutput){
 			$outStream = Bio::SeqIO->new( -file => ">".$fastaOut."_".$subfam .".fa",  -format => 'fasta' ); #subfamily-specific output file

@@ -294,6 +294,7 @@ for $class (keys %familyTree){
 		}
 	}
 }
+ # print Dumper(\%familyTree); exit; #***
 
 
 #Write families to their files
@@ -326,6 +327,7 @@ while ( my $seq = $inseq->next_seq )
 	
 	next unless exists $posToTaxa{$pos}; #"next" should happen only if specific classes are analyzed
 	next if exists $outputed{$pos}; #avoid writing same sequence twice to output (needed if same coords appear twice in output file; it happened...)
+	# print $pos ."\n"; #***
 	$outputed{$pos}=1; 
 	#get serial number of this sequence in it's file (used for unique identifier at head of fasta defline)
 	#remove ? and / characters. save original name for defline. 

@@ -1,22 +1,26 @@
 #Package: Many utilities for scripts working with Org/Class/Fam directory tree
-
+#Important note: the getDataDir() was retained for backward compatability, but it should not be used. 
+#				 It will look for a dir named "Data" somewhere up the dir tree of where this file is present.
 use strict; 
 use Cwd; 
 package getAll; 
+use FindBin;
+
+
 
 #pf = path flag: 1 = full path, 0 = no path. 
 
 sub organisms{
-	(my $pf) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $pf) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $orgs = myReadDir($dataDir, $pf); 
 	return $orgs; 
 }
 
 #list of classes in an organism
 sub classes{
-	(my $org) = @_; 
-	my $dataDir = getDataDir();
+	(my $dataDir, my $org) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org; 
 	my $classes = myReadDir($dir); 
 	return $classes;
@@ -24,8 +28,8 @@ sub classes{
 
 #list of class files
 sub class_files{
-	(my $org, my $pf) = @_; 
-	my $dataDir = getDataDir();
+	(my $dataDir, my $org, my $pf) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org; 
 	my $classes = myReadDir($dir, $pf); 
 	return $classes;
@@ -33,8 +37,8 @@ sub class_files{
 
 #list of families 
 sub families{
-	(my $org, my $class) = @_; 
-	my $dataDir = getDataDir();
+	(my $dataDir, my $org, my $class) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/db";  
 	my $family_dir_files = myReadDir($dir); 
 	my @families; 
@@ -52,8 +56,8 @@ sub families{
 
 #list of families in "files_$family" format
 sub family_files{
-	(my $org, my $class, my $pf) = @_; 
-	my $dataDir = getDataDir();
+	(my $dataDir, my $org, my $class, my $pf) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/db";  
 	my $family_dir_files = myReadDir($dir, $pf); 
 	my @families = grep {/files_[^\/]+$/} @$family_dir_files; 
@@ -62,8 +66,8 @@ sub family_files{
 #list of names
 #Note: produces error if no names were retreived
 sub names{
-	(my $org, my $class, my $family) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $org, my $class, my $family) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/db/files_".$family;  
 	my $names = myReadDir($dir);
 	my @names_no_indexes = grep {!/\.n(hr|in|sd|si|sq|nd|ni|tm)$/} @$names; 
@@ -74,8 +78,8 @@ sub names{
 }
 #list of name files
 sub name_files{
-	(my $org, my $class, my $family, my $pf) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $org, my $class, my $family, my $pf) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/db/files_" . $family ;  
 	my $name_files = myReadDir($dir, $pf); 
 	my @names_no_index_files = grep {!/\.n(hr|in|sd|si|sq|nd|ni|tm)$/} @$name_files; 
@@ -85,8 +89,8 @@ sub name_files{
 #Get hash of all cluster files in tabular format (in subdirs for each pair of nucs; see @nuc_pairs)
 #Each nuc-pair will either have a array of filenames returned (no path) or 0 if no files were found for the nuc-pair
 sub tabClustersClass {
-	(my $org, my $class, my $pf, my $subdir) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $org, my $class, my $pf, my $subdir) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/results";  
 	$dir .= "/$subdir" if $subdir; 
 	my @nuc_pairs = ("GA", "CT", "GC", "GT", "CA", "TA");
@@ -107,8 +111,8 @@ sub tabClustersClass {
 #Each nuc-pair will either have a array of filenames returned (no path) or 0 if no files were found for the nuc-pair
 #*** Probably works but should be checked !!!
 sub tabClustersFam {
-	(my $org, my $class, my $fam, my $pf, my $subdir) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $org, my $class, my $fam, my $pf, my $subdir) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/results";  
 	$dir .= "/$subdir" if $subdir; 
 	my @nuc_pairs = ("GA", "CT", "GC", "GT", "CA", "TA");
@@ -130,8 +134,8 @@ sub tabClustersFam {
 }
 
 sub clustersClass{
-	(my $org, my $class, my $pf, my $subdir) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $org, my $class, my $pf, my $subdir) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/results";  
 	$dir .= "/$subdir" if $subdir; 
 	my $clusts_ref = myReadDir($dir, $pf); 
@@ -144,12 +148,12 @@ sub clustersClass{
 }
 
 sub clustersClassAllOrgs{
-	(my $class, my $pf, my $subdir) = @_; 
+	(my $dataDir, my $class, my $pf, my $subdir) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my @clusts = (); 
-	my $org_ref = organisms(); 
-	my $dataDir = getDataDir(); 
+	my $org_ref = organisms($dataDir); 
 	foreach my $org (@$org_ref){
-		my $clusts_ref = clustersClass($org, $class, $pf, $subdir);  
+		my $clusts_ref = clustersClass($dataDir, $org, $class, $pf, $subdir);  
 		next unless $clusts_ref; #organism doesn't have the class 
 		push(@clusts, @$clusts_ref );
 	}
@@ -157,8 +161,9 @@ sub clustersClassAllOrgs{
 }
 
 sub clustersFam{
-	(my $org, my $class, my $family, my $pf, my $subdir) = @_;
-	my $clusts_all = clustersClass($org, $class, $pf, $subdir); 
+	(my $dataDir, my $org, my $class, my $family, my $pf, my $subdir) = @_;
+	$dataDir = getDataDir() unless $dataDir; 
+	my $clusts_all = clustersClass($dataDir, $org, $class, $pf, $subdir); 
 	return 0 unless $clusts_all; #return 0 if class isn't present in organism
 	my @clusts_fam = (); 
 	foreach my $cf (@$clusts_all){ #retain only cluster files of this family
@@ -171,11 +176,12 @@ sub clustersFam{
 }
 
 sub clustersFamAllOrgs{
-	(my $class, my $family, my $pf, my $subdir) = @_;
+	(my $dataDir, my $class, my $family, my $pf, my $subdir) = @_;
+	$dataDir = getDataDir() unless $dataDir; 
 	my @clusts = (); 
-	my $org_ref = organisms(); 
+	my $org_ref = organisms($dataDir); 
 	foreach my $org (@$org_ref){
-		my $clusts_ref = clustersFam($org, $class, $family, $pf, $subdir);  
+		my $clusts_ref = clustersFam($dataDir, $org, $class, $family, $pf, $subdir);  
 		next unless $clusts_ref; #organism doesn't have the class 
 		push(@clusts, @$clusts_ref);
 	}
@@ -192,8 +198,8 @@ sub clustersFamAllOrgs{
 
 
 sub clustStats{
-	(my $org, my $class, my $pf, my $subdir) = @_; 
-	my $dataDir = getDataDir(); 
+	(my $dataDir, my $org, my $class, my $pf, my $subdir) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $dir = $dataDir ."/". $org ."/". $class ."/results";  
 	$dir .= "/$subdir" if $subdir; 
 	my $results_ref = myReadDir($dir, $pf); 
@@ -210,8 +216,9 @@ sub clustStats{
 
 #cluster-stats files of a Fam in a specific Organim's Class
 sub clustStatsFam{
-	(my $org, my $class, my $family, my $pf, my $subdir) = @_;
-	my $clustStats = clustStats($org, $class, $pf, $subdir); 
+	(my $dataDir, my $org, my $class, my $family, my $pf, my $subdir) = @_;
+	$dataDir = getDataDir() unless $dataDir; 
+	my $clustStats = clustStats($dataDir, $org, $class, $pf, $subdir); 
 	return 0 unless $clustStats; #return 0 if no clustStats files were found
 	# my $regex = $class."_".$family.".txt\$"; 
 	my $regex = $class."_".$family.".txt\$"; 
@@ -221,8 +228,9 @@ sub clustStatsFam{
 }
 
 sub clustStatsFamAsFilename{
-	(my $org, my $class, my $family, my $pf, my $subdir) = @_;
-	my $clustStats = clustStats($org, $class, $pf, $subdir); 
+	(my $dataDir, my $org, my $class, my $family, my $pf, my $subdir) = @_;
+	$dataDir = getDataDir() unless $dataDir; 
+	my $clustStats = clustStats($dataDir, $org, $class, $pf, $subdir); 
 	return 0 unless $clustStats; #return 0 if no clustStats files were found
 	# my $regex = $class."_".$family.".txt\$"; 
 	my $regex = $class."_".$family.".txt\$"; 
@@ -232,11 +240,12 @@ sub clustStatsFamAsFilename{
 }
 
 sub clustStatsFamAllOrgs{
-	(my $class, my $family, my $pf, my $subdir) = @_;
+	(my $dataDir, my $class, my $family, my $pf, my $subdir) = @_;
+	$dataDir = getDataDir() unless $dataDir; 
 	my @clustStats = ();
-	my $org_ref = organisms(); 
+	my $org_ref = organisms($dataDir); 
 	foreach my $org (@$org_ref){
-		my $clustStats_ref = clustStatsFam($org, $class, $family, $pf, $subdir);  
+		my $clustStats_ref = clustStatsFam($dataDir, $org, $class, $family, $pf, $subdir);  
 		next unless $clustStats_ref; #organism doesn't have the class 
 		push(@clustStats, @$clustStats_ref );
 	}
@@ -245,8 +254,8 @@ sub clustStatsFamAllOrgs{
 
 #Returns a hash-ref with nucleotide frequencies by subfamily in the specified family
 sub nucFreqFamBySubfam{
-	(my $org, my $class, my $family) = @_; 
-	my $dataDir = getDataDir();
+	(my $dataDir, my $org, my $class, my $family) = @_; 
+	$dataDir = getDataDir() unless $dataDir; 
 	my $nuc_fam_file = $dataDir ."/".$org."/".$class."/db/Nuc_".$family.".txt"; 
 	my $nuc_lines_ref = lines($nuc_fam_file); 
 	my %nuc_by_subfam = (); 
@@ -270,7 +279,8 @@ sub nucFreqSubfam{
 #Returns: an array-ref with the nucleotide frequencies of the family (needs the external file created by calcFamNucFreq.pl)
 sub nucFreqFam{
 	(my $org, my $class, my $family) = @_; 
-	my $nuc_by_fam_file = "../DNA_editing_results/db_stats/Family_nuc_freq_all_orgs.txt"; 
+	my $nuc_by_fam_file = "/home/alu/binknis/DNA_editing_results/db_stats/Family_nuc_freq_all_orgs.txt"; 
+	print "Warning: running nucFreqFam with $nuc_by_fam_file - make sure it's updated!"; #***
 	my $fam_lines = lines($nuc_by_fam_file); 
 	my $regex = $org ."\t". $class ."\t". $family;
 	(my $fam_nuc_line) = grep (/$regex/ , @$fam_lines); 
@@ -296,8 +306,8 @@ sub lines{
 
 #get the "Data" directory. created so that you don't have to be one level under Data to call this script's functions
 sub getDataDir{
-	my $cwd = Cwd::cwd(); 
-	my $dataDir = $cwd; 
+	my $perlDir = "$FindBin::Bin"; 
+	my $dataDir = $perlDir; 
 	while(not -d "$dataDir/Data"){
 		($dataDir) = ($dataDir =~ /(\S+)\/\S+/); 
 	}

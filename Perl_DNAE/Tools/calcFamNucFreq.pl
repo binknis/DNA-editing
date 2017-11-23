@@ -3,15 +3,19 @@
 use strict; 
 use getAll; 
 
-(my $org, my $class) = @ARGV; 
+(my $dataDir, my $org, my $class) = @ARGV; 
+
+my $elemAndBPDir_root = "/home/alu/binknis/DNA_editing_results/db_stats/ElementsAndBasepairs_allOrgs"; 
+print "Warning: make sure the ElementAndBasepairs files are updated - currently reading from: $elemAndBPDir_root\n"; 
+
 #open and truncate existing file
-my $fam_nuc_freq_file = "../Data/$org/$class/db/NucByFams.txt";
+my $fam_nuc_freq_file = "$dataDir/Data/$org/$class/db/NucByFams.txt";
 open (OUT, ">$fam_nuc_freq_file") || die "couldn't open $fam_nuc_freq_file\n";
 
-my $fams = getAll::families($org, $class); 
+my $fams = getAll::families($dataDir, $org, $class); 
 for my $fam(@$fams){
 	#get num bps by name
-	my $elemAndBPDir = "../DNA_editing_results/db_stats/ElementsAndBasepairs_allOrgs"; 
+	my $elemAndBPDir = $elemAndBPDir_root; 
 	my $name_elemBP_file = $elemAndBPDir ."/allOrgs_bySubfamily.txt";
 	my $name_elemBP = getAll::lines($name_elemBP_file); 
 	my $regex = $org ."\t". $class ."\t". $fam;
@@ -23,7 +27,7 @@ for my $fam(@$fams){
 	my @nucs_freq = (0) x 4;
 	for (@name_counts){
 		(my $subfam, my $bps) = $_ =~ /(\S+)\t\d+\t(\d+)\s*$/;
-		my $nuc_subfam = getAll::nucFreqSubfam($org, $class, $fam, $subfam); #get subfam's Nuc freq
+		my $nuc_subfam = getAll::nucFreqSubfam($dataDir, $org, $class, $fam, $subfam); #get subfam's Nuc freq
 		for my $i(0 .. 3){
 			$nucs_freq[$i] += $bps * $nuc_subfam->[$i];
 			# print $subfam ." ". $nuc_subfam->[$i] ."\n"; 

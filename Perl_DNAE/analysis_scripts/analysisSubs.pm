@@ -1877,7 +1877,7 @@ sub calcBlastMMfreqs{
 				my @gapCountS = (0) x 4; 
 				foreach my $i(0 .. 3){  #subject aligned to gap count per nucleotide
 					$gapCountS[$i] = scalar(@{$s2gaps_r->{$nucs[$i]}}) if ($s2gaps_r->{$nucs[$i]}); #gap count
-				}			
+				}
 				
 				#Build output
 				my $alignData = join (',', $hsp_count, $hsp->hsp_length, $hsp->evalue, $hsp->score, $totalMMs); 
@@ -1912,11 +1912,11 @@ sub calcBMMForg{
 	my $multiFile = (-d $out ? 1 : 0); #if output file (0) or directory (1) specified in input
 	my $append = ($multiFile ? 0 : 1); #append only if it's not multifile
 	my $blastDir = join ('/', $dataDir , $org, $class, "results", "blasts"); 
-	my $fams = getAll::families($org, $class); 
+	my $fams = getAll::families($dataDir, $org, $class); 
 	foreach my $fam (@$fams){
 		my $outFamDir = join ('/', $out, $dirPrefix, $org, $class, $fam); 
 		mkpath $outFamDir if $multiFile; 
-		my $subfamFiles = getAll::name_files($org, $class, $fam);
+		my $subfamFiles = getAll::name_files($dataDir, $org, $class, $fam);
 		foreach my $sff (@$subfamFiles){
 			my $blastFile = join ('/', $blastDir, $fam, $sff .".gz");
 			my $outFile; 
@@ -1929,6 +1929,7 @@ sub calcBMMForg{
 #*** Need to check if this works *** 
 #$mm: two letters resembling the mismatch that we'd like to check its motif (e.g. GA is from G to A); lc/uc are fine. 
 #$name: full defline or regex that matches the defline
+#Note: runClusterFinder enables
 sub motif_per_alignment{
 	(my $blastFile, my $name1, my $name2, my $mm) = @_; 
 	my @nucs = qw/a c g t/;
@@ -1965,7 +1966,7 @@ sub motif_per_alignment{
 						#get nuc frequency/motif and print output
 						my $range = 2; 
 						my $freq_ref = getNucFrequencyPerPos($q_seq, \@mm_arr, $range, 0, 0);
-						my $fam_nuc_freq = getAll::nucFreqSubfam($org, $class, $fam, $subfam); 
+						my $fam_nuc_freq = getAll::nucFreqSubfam($dataDir, $org, $class, $fam, $subfam); 
 						# my @poses = (-$range .. -1, 1 .. $range);
 						my @poses = (-$range .. $range);
 						foreach my $pos (@poses){

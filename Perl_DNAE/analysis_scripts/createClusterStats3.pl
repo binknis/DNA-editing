@@ -9,10 +9,13 @@
 
 use strict;
 my $home = $ENV{"HOME"}; 
-use lib  $home . "/Perl_DNAE"; 
-use lib "/home/alu/binknis/Perl_DNAE"; 
+use FindBin;
+use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
+use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
 use getAll;  
-(my $org , my $class, my $paramLimits, my $subdir, my $dataDir) = @ARGV; 
+# use Getopt::Long;
+
+(my $dataDir, my $org , my $class, my $paramLimits, my $subdir) = @ARGV; 
 
 $dataDir = $home ."/". "Data" unless $dataDir; 
 
@@ -26,15 +29,15 @@ system("rm -f $subfamStatsFile");
 
 #get cluster files (full path)
 my $pf = 1; #full path
-my $clustFiles = getAll::tabClustersClass($org, $class, $pf, $subdir); 
+my $clustFiles = getAll::tabClustersClass($dataDir, $org, $class, $pf, $subdir); 
 die "no cluster_files for $org $class\n" if $clustFiles == 0; 
 my $allParams = getParams($clustFiles, $paramLimits); 
-my $fams = getAll::families($org, $class); 
+my $fams = getAll::families($dataDir, $org, $class); 
 my %fam_stats = ();
 my %sf_stats = (); 
 
 foreach my $fam (@$fams){ 
-	my $subfams = getAll::names($org, $class, $fam);
+	my $subfams = getAll::names($dataDir, $org, $class, $fam);
 	foreach my $np (@nucPairs){
 		foreach my $cf (@{$clustFiles->{$np}}){
 			(my $o, my $c, my $f, my $pval, my $th) = $cf =~ /clusters_([^_]+)_([^_]+)_(\S+)_(1e-\d+)_(\d+).tab$/;
@@ -70,7 +73,7 @@ open (my $f_fh, ">".$famStatsFile) or die "open $famStatsFile\n";
 open (my $sf_fh, ">".$subfamStatsFile) or die "open $subfamStatsFile\n"; 
 foreach my $fam (sort @$fams){
 	printStats($f_fh, $org, $class, $fam, $allParams, \%{$fam_stats{$fam}}); #Print family cluster stats to family stat file
-	my $subfams = getAll::names($org, $class, $fam);
+	my $subfams = getAll::names($dataDir, $org, $class, $fam);
 	foreach my $sf (sort @$subfams){
 		printStats($sf_fh, $org, $class, $fam, $allParams, \%{$sf_stats{$fam}}, $sf) ; #Print subfamily cluster stats to subfamily stat file
 	}

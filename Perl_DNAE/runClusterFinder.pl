@@ -102,6 +102,7 @@ mkpath "Progress";
 
 #Read Class names from file 
 my $classDir = $dataDir. "/" . $organism; 
+print $classDir ."\n"; #***
 opendir(CLASSES, $classDir) || print "classdir didn't open\n";
 my @classList = sort{lc($a) cmp lc($b)}(readdir(CLASSES));
 shift(@classList) while ($classList[0] =~ /^\./); #erase "." and ".." links

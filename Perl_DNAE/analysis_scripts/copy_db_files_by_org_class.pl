@@ -4,13 +4,13 @@
 use strict; 
 use getAll; 
 
-(my $org, my $class) = @ARGV; 
-my $fams = getAll::families($org, $class); 
+(my $dataDir, my $org, my $class) = @ARGV; 
+my $fams = getAll::families($dataDir, $org, $class); 
 die "No fams for: $org $class\n" if $fams eq 0; 
 
 ### copy file content ###
-my $dbdir = "../Data/$org/$class/db";
-my $outdir = "../DNA_editing_results/db_stats"; 
+my $dbdir = "$dataDir/Data/$org/$class/db";
+my $outdir = "/home/alu/binknis/DNA_editing_results/db_stats"; 
 foreach my $fam (@$fams){
 	#length file
 	my $len = $dbdir ."/Len_".$fam.".txt"; 

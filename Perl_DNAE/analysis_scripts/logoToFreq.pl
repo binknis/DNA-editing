@@ -8,6 +8,7 @@ use strict;
 (my $logo_file, my $edited_pos, my $margin, my $normFlag) = @ARGV; 
 my %hist = (); 
 my @nucs = ('a','c','g','t');
+$margin = $edited_pos - 1 unless $margin;
 my $num_poses = 2 * $margin + 1; 
 $edited_pos--; #-1 for 0-base. 
 my $start = $edited_pos - $margin; 

@@ -64,6 +64,12 @@ my $filter_subdir = "Filtered";
 my $intervalFile = ''; 
 my $intervalDir = ''; #interval or BED file (used to extract subfams per element when subfams of S and T may be different)  #"/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; # my $intervalDir = "/private3/Dropbox/users/binknis_data/Avian/rawdata/intervals"; #interval dir (for Avian genome project)
 
+#args for getEditedPositionsInCons (GEPIC)
+my $GEPIC_consRoot = ''; #root of rmsk consensus seq tree
+my $GEPIC_useSimilarCons = 1; #Even if direct file of the subfam's consensus seq exists - use blast to identify most similar cons seq
+my $GEPIC_consFileAll = ''; #file containing all consensus sequence files 
+
+##Controling args
 my $SUBFAM_SELECTION_NUC = 'S'; #if there are different subfams - use G or A's subfam when single annotation is needed
 my $DONT_GET_BEST_SOURCES = 0; #skip last time-consuming step that BLASTs to find best match (good to disable for large intermediate datasets)
 my $SKIP_POS_IN_CONS = 0;
@@ -86,9 +92,14 @@ my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited 
 	
 	"interval_file=s" => \$intervalFile,
 	"interval_dir=s" => \$intervalDir,
+	
 	"skip_best_sources!" => \$DONT_GET_BEST_SOURCES,
 	"skip_pos_in_cons!" => \$SKIP_POS_IN_CONS,
-	"subfam_selection_nuc=s" => \$SUBFAM_SELECTION_NUC
+	"subfam_selection_nuc=s" => \$SUBFAM_SELECTION_NUC,
+	
+	"gepic_consroot=s" => \$GEPIC_consRoot,
+	"gepic_simcons!" => \$GEPIC_useSimilarCons,
+	"gepic_consall=s" => \$GEPIC_consFileAll
 	)
 or die("Error in command line arguments\n");
  
@@ -353,19 +364,23 @@ unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #The findMotifs.pl script wasn't adap
 
 ### Advanced analyses - analysisSubs ###
 unless($SKIP_POS_IN_CONS){
-	analysisSubs::getEditedPositionsInCons($siteListName_G); #*** add arg to disable
-	analysisSubs::getEditedPositionsInCons($siteListName_A); 
+	analysisSubs::getEditedPositionsInCons($siteListName_G, $GEPIC_consRoot, $GEPIC_useSimilarCons, $GEPIC_consFileAll, $cores); 
+	analysisSubs::getEditedPositionsInCons($siteListName_A, $GEPIC_consRoot, $GEPIC_useSimilarCons, $GEPIC_consFileAll, $cores); 
 }
+
+die "ending\n"; #***
 
 getNucStats($trackDir, $mmS, $siteListName_G); 
 getNucStats($trackDir, $mmT, $siteListName_A); 
 
 
 #Get best sources for each target element
-my $STreversed = 0; #*** add arg 
-my $transform = 0; 
-my $trimmed = 0; 
-analysisSubs::getBestSources($graphFile, $seqFa_G_file, $seqFa_A_file, $STreversed, $transform, $trimmed) unless $DONT_GET_BEST_SOURCES; 
+unless ($DONT_GET_BEST_SOURCES){
+	my $STreversed = 0; #*** add arg 
+	my $transform = 0; 
+	my $trimmed = 0; 
+	analysisSubs::getBestSources($graphFile, $seqFa_G_file, $seqFa_A_file, $STreversed, $transform, $trimmed); 
+}
 
 ### prints all keys in a hash to the arg file handle ### 
 sub printCoordHashToGFF{

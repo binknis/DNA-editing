@@ -7,7 +7,7 @@ use Bio::SeqIO;
 use List::Util qw(max min sum);
 use File::Path qw(mkpath);
 use File::Copy;
-# use Data::Dumper;
+use Data::Dumper;
 
 # use lib $ENV{HOME} . "/Perl_DNAE"; #*** make sure it works after replacing this with following lines
 use FindBin;
@@ -33,7 +33,7 @@ use getAll;
 #							1 - return fraction of each nuc in each pos; 
 #		$reverse_editing = option to reverse_editing (change edited positions back to pre-editing form; e.g. "GA" will reverse A to G); 
 #		$no_CpG = Don't count sites that have specific nucs in their proximity(CpG is just an example and typical usage)
-#				examples: For no C at -1 arg: "-1,c"; For no T at +2 arg: "1,t"
+#				examples: For no C at -1 arg: "-1,c"; For no T at +2 arg: "2,t"
 #Returns: a hash with the frequencies in hash{$pos}{$nuc} = $freq
 #Note: 1. if normalizes then rounded to 3 decimal digits
 #
@@ -73,13 +73,13 @@ sub getNucFrequencyPerPos{
 	foreach my $site(@$site_ref){
 		if ($no_CpG){ #check no-CpG filter to filter out specific sites (CpG is just an example and typical usage)
 			my $noInd = $site + $noPos - 1; 
-			if($noInd <= $#seq && $noInd > 0){ #in bounds of sequence
+			if($noInd <= $#seq && $noInd >= 0){ #in bounds of sequence #Fixed bug (used to be >0)
 				next if ($seq[$noInd]) eq $noNuc; #nuc to skip detected
 			}
 		}
 		foreach my $pos (@positions){
 			my $ind = $site + $pos - 1; 
-			if ($ind <= $#seq && $ind > 0){	#in bounds of sequence
+			if ($ind <= $#seq && $ind >= 0){	#in bounds of sequence #Fixed bug (used to be >0)
 				if ($seq[$ind] =~ /[acgt]/){ #not n or some other character
 					$nucFreq{$pos}{$seq[$ind]}++;
 					$posCount{$pos}++; 
@@ -1155,17 +1155,25 @@ sub getPairs {
 
 
 #Notes: 1. sitesListFile must be full path and present in Track-dir
+#***To do: enable sending paths of formatdb and blastall and/or enable blast+ run
 sub getEditedPositionsInCons {
 	#(my $siteListFile, my $idMapFile) = @_; 
-	(my $siteListFile) = @_; 
-	my $alwaysUseMostSimilarConsensus = 1; #CONST
+	(my $siteListFile, my $consRoot, my $alwaysUseMostSimilarConsensus, my $consFileAll, my $cores) = @_; 
+	$cores = 12 unless $cores; 
+	$alwaysUseMostSimilarConsensus = 1 unless $alwaysUseMostSimilarConsensus eq '0'; 
+	
 	(my $dir, my $GA, my $suffix) = $siteListFile =~ /(\S+)\/siteList_([ACTG])_(\S+)\.txt/;
 	my $subfamDir = $dir ."/SubfamFiles"; 
 	(my $org, my $class, my $family, my $pval, my $th, my $control) = $suffix =~ /([^_]+)_([^_]+)_(\S+)_([^_]+)_([^_]+)(_control)?/; #needed only for class and family to access consensus file
 	
 	# my $rmskDir = "/home/alu/binknis/binknis_data/RepBase/ConsForMapping_18_8_13"; #CONST
-	my $rmskRoot = "/home/alu/binknis/binknis_data/RepBase/ConsForMapping_12_1_14"; #CONST
-	my $rmskDir = $rmskRoot; 
+	print "consRoot 1: ". $consRoot ."\n"; #***
+	if(not $consRoot){ 
+		$consRoot = "/home/alu/binknis/binknis_data/RepBase/ConsForMapping_12_1_14"; #CONST
+		print "consRoot 2: ". $consRoot ."\n"; #***
+	} 
+	print "consRoot 3: ". $consRoot ."\n"; exit; #***
+	
 	### Create sequence files for each subfamily (G/A specific) and get subfamily names ###
 	my $seqFile = "seqFasta_".$GA."_".$suffix.".fa";
 	my $subfams = splitFastaBySubfam($dir, $seqFile, $GA);
@@ -1174,13 +1182,30 @@ sub getEditedPositionsInCons {
 	my $fullDeflineKeys = 1; #needed by getConsPosHist()
 	my $sites_ref = sitesFromSiteList($siteListFile, $fullDeflineKeys);
 	
-	my $classConsFile = $rmskRoot ."/". $class .".fa"; 
-	my $mostSimilarCons = getMostSimilarConsPerSubfam($subfamDir, $subfams, $GA, $classConsFile);
-	
+	#Different options for file to find most similar consensus sequence
+	my $multiConsFileForMapping; 
+	if(-e $consRoot ."/". $class .".fa"){ #specific class fa exists
+		$multiConsFileForMapping = $consRoot ."/". $class .".fa"; 
+	} elsif(-e $consFileAll){ #file for all seqs was specified and should be used instead of missing class file
+		$multiConsFileForMapping = $consFileAll; 
+	} elsif (-e $consRoot ."/". "All" .".fa"){ #Alternative name for all seq file
+		$multiConsFileForMapping = $consRoot ."/". $class .".fa"; 
+	}
+	my $mostSimilarCons = getMostSimilarConsPerSubfam($subfamDir, $subfams, $GA, $multiConsFileForMapping, $cores);
+	print Dumper($mostSimilarCons); exit; #*** 			
 	### BLAST against the consensus sequence and create histogram of positions in consensus and list of nucleotides each element was mapped to ### 
 	my %nucInConsList = (); 
 	my $posConsFile = $dir ."/posCons_".$GA."_".$suffix.".txt";
-	$rmskDir .= "/$class/$family";  
+	my $rmskDir = $consRoot; 
+	if(-e $rmskDir ."/$class/$family"){ #class/family directory hierarchy exists
+		$rmskDir .= "/$class/$family";  
+	} elsif (-e $rmskDir ."/". "perSeq") { #use new file layout (i.e. no subdirs under perSeq)
+		$rmskDir .= "/" . "perSeq";  
+	} else {
+		print "Error in analysisSubs::getEditedPositionsInCons - unexpected rmskDir hierarchy\n"; 
+		print "rmskDir: " . $rmskDir ."\n"; #***
+	}
+	
 	open (POSCONS, ">$posConsFile") or die "$posConsFile didn't open\n";  
 	my $unmappedFile = $subfamDir ."/". "unmapped_".$GA.".txt"; 
 	my $mappedFile = $subfamDir ."/". "mapped_".$GA.".txt"; 
@@ -1188,11 +1213,18 @@ sub getEditedPositionsInCons {
 	open (MAPPED, ">$mappedFile") or die "$mappedFile didn't open\n";
 	foreach my $subfam (@$subfams){
 		### run blast ###
+		$subfam =~ s/\/|=/_/; #these characters shouldn't exist in cons file names (preprocessing removed it in )
 		my $repbaseFile = $rmskDir ."/". $subfam.".fa"; #set direct file
 		#if direct file doesn't exist - use most similar sequence based on blast search against class
 		if (not -e $repbaseFile or $alwaysUseMostSimilarConsensus){ #construct repbase filename based on blast result
-			(my $rmsk_sf, my $rmsk_fam, my $rmsk_class) = split('=', $mostSimilarCons->{$subfam}); 
-			$repbaseFile = $rmskRoot ."/". join('/', $rmsk_class, $rmsk_fam, $rmsk_sf) .".fa"; 
+			if($mostSimilarCons->{$subfam} =~ /.*=.*=/){ #if sequence names have subfam=fam=class format (this was original format)
+				(my $rmsk_sf, my $rmsk_fam, my $rmsk_class) = split('=', $mostSimilarCons->{$subfam}); 
+				$repbaseFile = $consRoot ."/". join('/', $rmsk_class, $rmsk_fam, $rmsk_sf) .".fa"; 
+			} else { #new format - hash-ref contains only subfam info for direct access to subfam file - use the new perSeq subdir containing subfam.fa file per subfam
+				my $rmsk_sf = $mostSimilarCons->{$subfam}; 
+				$repbaseFile = $consRoot ."/". "perSeq" ."/". $rmsk_sf .".fa"; 
+			}
+			
 		}
 		#I commmented the option to use db_to_rmsk mapping for now
 		# unless (-e $repbaseFile){ #if direct file doesn't exist then check if db_to_rmsk mapping contains a mapping for this subfam and reset file
@@ -1215,8 +1247,11 @@ sub getEditedPositionsInCons {
 			unlink $blastOutFile if -e $blastOutFile; #erase old file because runBlast.pl concatenates
 			#system("perl516 Tools/runBlast.pl $editedFile $repbaseFile $blastOutFile blastn 4 1e-10 1"); #cores=4, pval=1e-20, -S=1 (only + strand)
 			#system("perl516 Tools/runBlast.pl $editedFile $repbaseFile $blastOutFile blastn 4 1e-2 1"); #cores=4, pval=1e-2, -S=1 (only + strand)
-			my $blastPval = "1e-20"; my $cores = 4; my $blastStrand = 1;
-			system("blastall -p blastn -i $editedFile -d $repbaseFile -e $blastPval -a $cores -S $blastStrand -F F -v 0 > $blastOutFile"); #formatdb was pre-run
+			my $blastPval = "1e-20"; my $blastStrand = 1;
+			unless(-e $repbaseFile . ".nhr"){ #run formatdb if index files don't exist (I previously pre-ran the formatdb)
+				system("formatdb -i $repbaseFile -p F -o T"); 
+			}
+			system("blastall -p blastn -i $editedFile -d $repbaseFile -e $blastPval -a $cores -S $blastStrand -F F -v 0 -W 6 > $blastOutFile"); 
 			# system("blastn -query $editedFile -subject $repbaseFile -out $blastOutFile -strand plus -dust no -culling_limit 1"); #blast only plus strand
 			
 			### parse and print results ###
@@ -1283,7 +1318,8 @@ sub splitFastaBySubfam{
 #Function: getMost similar consensus sequence per subfamily (needed when exact name of db subfam isn't in rmsk embl file)
 # choose best consensus per subfam by choosing the subject most commonly producing best bitscore (first result).
 sub getMostSimilarConsPerSubfam{
-	(my $subfamDir, my $subfams, my $GA, my $classConsFile) = @_; 
+	(my $subfamDir, my $subfams, my $GA, my $multiConsFileForMapping, my $cores) = @_; 
+	$cores = 12 unless $cores; 
 	my %similarCons = (); 
 	my %mostSimilarCons = ();
 	#find candidates for best subfam per sequence
@@ -1292,8 +1328,8 @@ sub getMostSimilarConsPerSubfam{
 		#Only the best db sequence is shown for each query (-b 1); but will work without this filter too
 		my $editedFile = $subfamDir ."/". "seqFasta_".$GA."_".$sf.".fa";
 		my $blastOutFile = $subfamDir ."/"."blastToClass_". $GA ."_". $sf .".tab"; 
-		my $blastPval = "1e-20"; my $cores = 4; my $blastStrand = 1;
-		system("blastall -p blastn -i $editedFile -d $classConsFile -e $blastPval -a $cores -S $blastStrand -F F -v 0 -m 8 -b 1 > $blastOutFile"); 
+		my $blastPval = "1e-20"; my $blastStrand = 1;
+		system("blastall -p blastn -i $editedFile -d $multiConsFileForMapping -e $blastPval -a $cores -S $blastStrand -F F -v 0 -m 8 -b 1 > $blastOutFile"); 
 		open (my $blast_fh, $blastOutFile) or die "open $blastOutFile\n"; 
 		my $prev=""; 
 		while(my $l = <$blast_fh>){
@@ -1931,7 +1967,7 @@ sub calcBMMForg{
 #$name: full defline or regex that matches the defline
 #Note: runClusterFinder enables
 sub motif_per_alignment{
-	(my $blastFile, my $name1, my $name2, my $mm) = @_; 
+	(my $dataDir, my $blastFile, my $name1, my $name2, my $mm) = @_; 
 	my @nucs = qw/a c g t/;
 	my %nucMap = ('a'=> 0, 'c' => 1, 'g' => 2, 't' => 3); 
 	(my $from, my $to) = split('', lc $mm); #extract nuc 'from' and 'to' from mismatch arg. 

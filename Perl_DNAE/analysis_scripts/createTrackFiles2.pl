@@ -1,7 +1,7 @@
 #Function: Parses a specific cluster file and creates several UCSC-track and analysis-output files
 #			CHANGE FROM createTrackFiles.pl: Works on tabular output cluster files
 #Input: Specification of a cluster file (see args)
-#	filter = select only part of sequences in cluster file: Format := [pairs/seqs/seqsG/seqsA/subfam/subfams]|[1/0]|[bed-file/gff-file/pair-file/subfam/subfam-file]|description. example: "seqsA|1|file.bed|this_describes_filter" (means: a sequence file for A sequences | retain only these | BED format input | "this_describes_filter" will be appended to output dir)
+#	filter = select only part of sequences in cluster file: Format := [pairs/seqs/seqsG/seqsA/subfam/subfams/clusters]|[1/0]|[bed-file/gff-file/pair-file/subfam/subfam-file/clusters-file]|description. example: "seqsA|1|file.bed|filter_description" (means: a sequence file for A sequences | retain only these | BED format input | "filter_description" will be appended to output dir)
 #     Filter explanation and pairing: 
 	#		1. pairs - 3rd param will be two columns in "chrN:start-end[+-]" format 
 	#		2. seqs - filter for both G and A seqs (BED or GFF file)
@@ -59,7 +59,7 @@ my $th = 5;
 my $cores = 12;
 my $mm = "GA";
 my $filter = ''; 
-my $filter_subdir = "Filtered"; 
+my $no_filter_subdir  = "raw";
 
 my $intervalFile = ''; 
 my $intervalDir = ''; #interval or BED file (used to extract subfams per element when subfams of S and T may be different)  #"/home/alu/binknis/binknis_data/Raw_Data/Vertebrate"; # my $intervalDir = "/private3/Dropbox/users/binknis_data/Avian/rawdata/intervals"; #interval dir (for Avian genome project)
@@ -73,6 +73,11 @@ my $GEPIC_consFileAll = ''; #file containing all consensus sequence files
 my $SUBFAM_SELECTION_NUC = 'S'; #if there are different subfams - use G or A's subfam when single annotation is needed
 my $DONT_GET_BEST_SOURCES = 0; #skip last time-consuming step that BLASTs to find best match (good to disable for large intermediate datasets)
 my $SKIP_POS_IN_CONS = 0;
+my $NO_FIND_MOTIFS = 0;
+
+my $STforPairs = 'S'; #source or target selection for pair-related commands. Options: ST, S, T
+
+my $NUC_FREQ_NO_CpG = 0; #if activated, will skip -1,c for "G/A" or +1,g for "C/T" calculation (However, it is more preferable to use filters to discard clusters enriched with CpG altogether. This retains them and skips in freq calculation)
 
 my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited elements
  
@@ -86,7 +91,6 @@ my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited 
 	"mm=s" => \$mm,
 	
 	"filter=s" => \$filter,
-	"filter_subdir=s" => \$filter_subdir,
 	
 	"pmotif=s" => \@pmotifs,
 	
@@ -96,10 +100,14 @@ my @pmotifs = ('1e-3', '1e-2'); #p-values to test for motif detection in edited 
 	"skip_best_sources!" => \$DONT_GET_BEST_SOURCES,
 	"skip_pos_in_cons!" => \$SKIP_POS_IN_CONS,
 	"subfam_selection_nuc=s" => \$SUBFAM_SELECTION_NUC,
+	"no_find_motifs!" => \$NO_FIND_MOTIFS,
 	
 	"gepic_consroot=s" => \$GEPIC_consRoot,
 	"gepic_simcons!" => \$GEPIC_useSimilarCons,
-	"gepic_consall=s" => \$GEPIC_consFileAll
+	"gepic_consall=s" => \$GEPIC_consFileAll,
+	
+	"st_pairs!" => \$STforPairs,
+	"nuc_freq_no_cpg!" => \$NUC_FREQ_NO_CpG
 	)
 or die("Error in command line arguments\n");
  
@@ -112,6 +120,7 @@ or die("Error in command line arguments\n");
 $pval = "1e-" . $pval if $pval =~ /^\d+$/; #fix format of pval input (enables inputting int instead of scientific notation)
 $mm = uc $mm; 
 (my $mmS, my $mmT) = split('', $mm); #save source and target mismatches
+my $STflag = ($STforPairs eq 'T' ? 1 : 0); #1 = Target, 0 = Source
 
 ##Subfamily selection
 if ($SUBFAM_SELECTION_NUC eq 'S'){ 
@@ -147,8 +156,8 @@ exit if (not -e $cluster_file or -z $cluster_file); #don't parse if cluster's fi
 
 #Track dir ("trackDir")
 my $trackRootDir = $resDir . "/Tracks"; 
-my $trackDir = $trackRootDir . "/". $filter_subdir; 
-$trackDir .= "/tracks_" . $suffix ."/". $mm;
+my $trackDir = $trackRootDir; 
+$trackDir .= "/tracks_" . $suffix ."/". $mm . ($filter ? "" : "/" . $no_filter_subdir);
 #dir trailers
 if ($filter){
 	(my $f_suffix) = $filter =~ /([^\|]+)$/;
@@ -168,6 +177,7 @@ if ($filter){
 		$cluster_file = $cluster_file_filter;
 	}
 }
+my $no_write_clusters = $tabular_file eq $cluster_file ? 1 : 0; #if cluster file already exists in place it doesn't need to be created
 
 ## DSs for graph and tracks ## 
 my %coords_G_all  = ();
@@ -187,7 +197,9 @@ if($FETCH_SUBFAMS_FROM_INTERVAL_FILE){
 #### Parse cluster file and create tabular cluster file ###
 my $retained = 0; #for filter count (to exit of 0 are retained after filter)
 open (CLUSTS ,"<" . $cluster_file) || die ("couldn't open $cluster_file"); 
-if ($filter or $FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #For filter - create a new file with the clusters retained for creating files in trackDir
+if($no_write_clusters){
+}
+elsif ($filter or $FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #For filter - create a new file with the clusters retained for creating files in trackDir
 	open (TAB ,">" . $tabular_file) || die ("couldn't open $tabular_file"); 
 }
 else{ #No filter - there is no need to create a new cluster file, a symbolic link will be created to original cluster file in the trackDir
@@ -197,8 +209,8 @@ else{ #No filter - there is no need to create a new cluster file, a symbolic lin
 while(my $line  = <CLUSTS>)
 {
 	chomp $line; 
-	next unless $line =~ /^[ACTG][ACTG]\t/; #skip header line #***MODIFY if adding C->N clusters
-	# print $line; #***
+	# next unless $line =~ /^[ACTG][ACTG]\t/; #skip header line #MODIFY if adding C->N clusters
+	next unless $line =~ /^$mm/; #enable input of clusters from multiple mms and run this script separately for each mm.
 	(my $mmType, my $assembly, my $class, my $fam, my $subfam, 
 	my $coordsG, my $coordsA, my $direct_mms, my $num_all_mms, my $prob, 
 	my $locG, my $locA, my $num_clusts, my $mmSerials, 
@@ -263,13 +275,13 @@ while(my $line  = <CLUSTS>)
 		else{
 			$tuple = $line; 
 		}
-		print TAB "$tuple\n";
+		print TAB "$tuple\n" unless $no_write_clusters;
 	}
 	elsif($FETCH_SUBFAMS_FROM_INTERVAL_FILE){
 		my $tuple = join("\t", $mmType, $assembly, $class, $fam, $subfam, $coordsG, $coordsA, 
 								$direct_mms, $num_all_mms, $prob, $locG, $locA, $num_clusts, 
 								$mmSerials, $clusters_span_woGaps, $clusters_span, $align_length, $mmCount_str);  #This is same order as parsing from original clusters line, but only first columns are saved to avoid printing analysis columns from processed clusters file
-		print TAB "$tuple\n";
+		print TAB "$tuple\n" unless $no_write_clusters;
 	}
 	$retained++; #count retained cluster
 	
@@ -288,7 +300,7 @@ while(my $line  = <CLUSTS>)
 	($coordsToDefline{$coordsA}) = $assembly ."=". $coordsA ."=". $class ."=". $fam ."=". $subfamA; 	
 }
 close (CLUSTS); 
-close (TAB) if $filter; 
+close (TAB) if ($filter and not $no_write_clusters); 
 
 if ($filter and ($retained == 0)){ #exit if no clusters passed filter
 	die "No clusters retained after filter for: filter: $filter and output dir: $trackDir\n"; 
@@ -355,7 +367,7 @@ else{
 }
 
 ### Find Context Preference Motifs of edited sites ###
-unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE){ #The findMotifs.pl script wasn't adapted for this option. 
+unless($FETCH_SUBFAMS_FROM_INTERVAL_FILE or $NO_FIND_MOTIFS){ #The findMotifs.pl script wasn't adapted for this option. 
 	for my $pmotif (@pmotifs){
 		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $dataDir $org $class $family $pval $th $pmotif $mm $mmS $trackDir");
 		system("perl516 $perlDir/analysis_scripts/findMotifs.pl $dataDir $org $class $family $pval $th $pmotif $mm $mmT $trackDir"); 
@@ -368,10 +380,8 @@ unless($SKIP_POS_IN_CONS){
 	analysisSubs::getEditedPositionsInCons($siteListName_A, $GEPIC_consRoot, $GEPIC_useSimilarCons, $GEPIC_consFileAll, $cores); 
 }
 
-die "ending\n"; #***
-
-getNucStats($trackDir, $mmS, $siteListName_G); 
-getNucStats($trackDir, $mmT, $siteListName_A); 
+getNucStats($trackDir, $mmS, $siteListName_G, $NUC_FREQ_NO_CpG, 0); 
+getNucStats($trackDir, $mmT, $siteListName_A, $NUC_FREQ_NO_CpG, 1); 
 
 
 #Get best sources for each target element
@@ -537,13 +547,17 @@ sub parseFilter{
 
 ### ADVANCED ANALYSES ###
 sub getNucStats { 
-	(my $trackDir, my $GA, my $siteListFile) = @_; 
+	(my $trackDir, my $GA, my $siteListFile, my $no_CpG, my $STflag) = @_; 
 	my $suffix = $siteListFile;
 	$suffix =~ s/.*siteList_//; 
 	$suffix =~ s/\.txt$//; 
 	
 	$trackDir .= "/"; 
-	$GA = "G" unless $GA; #default "G"
+	$GA = ($GA ? uc $GA : "G"); #default "G"
+	
+	(my $suffix2) = $suffix =~ /[ACTG]_(\S+)/; #suffix for cluster file (without _[ACTG]_)
+	my $clustersFile = $trackDir . "clusters_".$suffix2.".tab"; 
+	
 	my $ga = lc $GA; 
 	my $trim = 0; #if to trim polyA tail using trimest
 	my $border = 0; #if to calc nuc freq only within border of first and last editing sites #***
@@ -565,8 +579,20 @@ sub getNucStats {
 	my $range = 7; 
 	my $freqFile = $trackDir . "rawFreq_".$suffix.".txt";
 	my $freqPerSeqFile = $trackDir . "freqPerSeq_".$suffix.".txt"; 
-	my $no_CpG = 0; #*** add as arg
-	analysisSubs::getNucFrequencyPerPosAllSeqs($seqFile, $siteListFile, $range, 1, 0, $freqFile, $no_CpG, $freqPerSeqFile); #(my $seqFile, my $siteListFile, my $range, my $normalize, my $reverse_editing, my $outfile, my $no_CpG, my $freqPerSeqFile)
+	# my $no_CpG_str = ($NUC_FREQ_NO_CpG ? "-1,c" : 0); 
+	my $no_CpG_str; 
+	if($NUC_FREQ_NO_CpG){
+		if($GA eq 'G' or $GA eq 'A'){
+			$no_CpG_str = "-1,c";
+		} elsif ($GA eq 'C' or $GA eq 'T'){
+			$no_CpG_str = "1,g";
+		} else {
+			$no_CpG_str = 0;
+		}
+	} else {
+		$no_CpG_str = 0; 
+	}
+	analysisSubs::getNucFrequencyPerPosAllSeqs($seqFile, $siteListFile, $range, 1, 0, $freqFile, $no_CpG_str, $freqPerSeqFile); #(my $seqFile, my $siteListFile, my $range, my $normalize, my $reverse_editing, my $outfile, my $no_CpG, my $freqPerSeqFile)
 	
 	my $hash_ref; 
 	if ($border){
@@ -603,16 +629,23 @@ sub getNucStats {
 	$normalize = 1;
 	analysisSubs::getTripletsAllSeqs($seqFile, $acgt, $siteListFile, $range, $normalize, $reverse_editing, $suppressPrint, $revcom, $border);
 	
-	#create nucListFreq file
-	my $nucListFile = $trackDir . "nucList_".$suffix.".txt"; 
-	analysisSubs::nucListToFreq($nucListFile);
+	##Analyze nuc in cons 
+	my $nucListFile = $trackDir . "nucListInCons_".$suffix.".txt"; 
+	if(-e $nucListFile){
+		#create nucListFreq file
+		analysisSubs::nucListToFreq($nucListFile);
+		
+		#create nucList + nucListFreq per pairs
+		analysisSubs::nucInConsFreqPerPairs($clustersFile, $STflag, $GA);
+	}
 	
-	#create nucList + nucListFreq per pairs
-	(my $suffix2) = $suffix =~ /[ACTG]_(\S+)/;
-	my $clustersFile = $trackDir . "clusters_".$suffix2.".tab"; 
-	my $SorT = ($GA =~ /[AT]/ ? 1 : 0); 
-	analysisSubs::nucFreqPerPairs($clustersFile, $SorT, $GA);
+	##Identify potential CpG-enriched clusters in pairs of cluster file
+	my $posForCpGfilter = (($GA eq 'G' or $GA eq 'A') ? -1 : 1); #-1 for G/A, 1 for C/T
+	# print "before nucInSeqFreqPerPairs\n"; #***
+	analysisSubs::nucInSeqFreqPerPairs($clustersFile, $STflag, $posForCpGfilter, 0, $mm); 
+	# print "after nucInSeqFreqPerPairs\n"; #***
 	
+	##Analyze nuc composition
 	#print nuc composition for all seqs and per seq
 	my $ncFile = $seqFile; 
 	$ncFile =~ s/seqFasta/nucComp/; 

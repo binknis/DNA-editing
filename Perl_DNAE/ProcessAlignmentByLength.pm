@@ -11,14 +11,16 @@ sub process_alignment_by_length
 	my $hsp = $$hsp_ref;
 	my $len = int( ( $hsp->length('query') + $hsp->length('hit') ) / 2 );
 	my $allMMs = $args_r->{"allmms"}; 
+	my $plusVsMinus = 0; 
 	if ( $hsp->strand('query') != $hsp->strand('hit') )
 	{
-		print
-		"Alignement $query_name<=>$hit_name between different strands!!!\n";
-		return;
+		$plusVsMinus = 1; 
+		# print"Alignement $query_name<=>$hit_name between different strands!!!\n";
+		# return;
 	}
 	
-	my %no_rev = ("ga" => 0, "ct" => 0, "gc" => 0, "gt" => 0, "ca" => 0, "ta" => 0); 
+	#Note: these hashes are used only if args->{"directional"} is false, otherwise nothing is reversed
+	my %no_rev = ("ga" => 0, "ct" => 0, "gc" => 0, "gt" => 0, "ca" => 0, "ta" => 0); #mismatches that do not need to be reversed
 	my %rev = ("ag" => 0, "tc" => 0, "cg" => 0, "tg" => 0, "ac" => 0, "at" => 0); #these should be reversed in output, because I want only one direction between each pair of nucs (ga, ct, gc, gt, ca, ta).
 	
 	my %transition = ("ag" => 1, "tc" => 1, "cg" => 0, "tg" => 0, "ac" => 0, "at" => 0, 
@@ -45,6 +47,7 @@ sub process_alignment_by_length
 	
 	my $q_start  = $hsp->start('query');
 	my $s_start  = $hsp->start('subject');
+	my $s_end  = $hsp->end('subject');
 	my $total_mms = 0;
 	my $q_gaps   = 0;
 	my $s_gaps   = 0;
@@ -57,28 +60,36 @@ sub process_alignment_by_length
 		if ( $s1[$p] eq '-' ) #query gap
 		{
 			$q_gaps++;
-			next;
 		}
 		elsif ( $s2[$p] eq '-' ) #subject gap
 		{
 			$s_gaps++;
-			next;
 		}
-		elsif (exists $no_rev{$m}){ #correct order (s1 is pre-edited nuc coined 'parent'; e.g. 'g' in g>a editing)
-			push ( @{$mms{$m}}, $s_start + $p - $s_gaps ); #mms in 
+		elsif (exists $no_rev{$m} or $args_r->{"directional"}){ #correct order (s1 is pre-edited nuc coined 'parent'; e.g. 'g' in g>a editing)
+			unless($plusVsMinus){ #same strand
+				push ( @{$mms{$m}}, $s_start + $p - $s_gaps ); #mms in edited
+			} else { #different strands (typically not allowed)
+				push ( @{$mms{$m}}, $s_end - $p + $s_gaps); #mms in edited
+			}
 			push ( @{$mms_parent{$m}}, $q_start + $p - $q_gaps ); #mms in parent
 			push( @{$inds{$m}}, $total_mms);
 			$counts{$m}++; 
+			$total_mms++;
 		}
 		elsif (exists $rev{$m}) { #reversed order (s2 is actual parent)
-			push ( @{$mms{$m}}, $q_start + $p - $q_gaps ); #mms in 
-			push ( @{$mms_parent{$m}}, $s_start + $p - $s_gaps ); #mms in parent
+			push ( @{$mms{$m}}, $q_start + $p - $q_gaps ); #mms in edited
+			unless($plusVsMinus){ #same strand
+				push ( @{$mms_parent{$m}}, $s_start + $p - $s_gaps ); #mms in parent
+			} else { #different strands (typically not allowed)
+				push ( @{$mms_parent{$m}}, $s_end - $p + $s_gaps ); #mms in parent
+			}
 			push( @{$inds{$m}}, $total_mms );
 			$counts{$m}++;
+			$total_mms++;
 		}
-		else{ #some non-standard nuc character (e.g. N) - do nothing (but total_mms will be incremented
+		else{ #some non-standard nuc character (e.g. N) - do nothing (total_mms will NOT be incremented, as for gaps)
 		}
-		$total_mms++;
+		
 	}	
 	
 	#reverse counts_rev hash - needed for command with reversed parent/edited 
@@ -106,7 +117,7 @@ sub process_alignment_by_length
 		if (not $allMMs){ #if only transitions - skip nontransitions
 			next if $m !~ /^(ag|ga|ct|tc)$/;
 		}
-		if (exists $no_rev{$m}){ #correct order (e.g. ga)
+		if (exists $no_rev{$m} or $args_r->{"directional"}){ #correct order (e.g. ga) or looking at directional alignment (=no reversing ever)
 			FindClustersByLength::find_clusters_by_length
 					( \@{$inds{$m}}, \@{$mms{$m}}, \@{$mms_parent{$m}}, $query_name, $hit_name, $probs{$m}, $m, $total_mms, $len, $taxa_r, $args_r,  \%counts); #2 is flag for transversion
 		}

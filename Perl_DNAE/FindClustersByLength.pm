@@ -15,6 +15,7 @@
 
 #Output Notes: 
 #	1. write_cluster_tabular writes tabular output. writes also GA and CT mismatches to ga and ct subdirs, respectively; If you want to go back to older version, replace the function call to write_cluster (see changes below)
+#*** fix span calculation when subject strand is (-)
 
 package FindClustersByLength;
 use strict;
@@ -169,11 +170,11 @@ sub write_cluster_tabular
 	my @where1base;
 	foreach my $i ( 0 .. $#where ) { $where1base[$i] = $where[$i] + 1; }
 	my $mmSerials = join (',', @where1base); 
-	my $whereS = join (',', @mm_parent[@where]); 
-	my $whereT = join (',', @mm[@where]); 
+	my $whereS = join (',', sort(@mm_parent[@where])); #added sort for plus-vs-minus
+	my $whereT = join (',', sort(@mm[@where])); #added sort for plus-vs-minus
 	my $num_edited_sites = scalar(@mm); 
 	
-	my $clusters_span = $mm[$where[$#where]] - $mm[$where[0]] + 1; #num bps of region affected by editing (bps span from 1st mm of 1st cluster to last mm of last cluster)
+	my $clusters_span = abs($mm[$where[$#where]] - $mm[$where[0]]) + 1; #num bps of region affected by editing (bps span from 1st mm of 1st cluster to last mm of last cluster) #added abs for plus-vs-minus alignment.
 	
 	my $clusters_span_woGaps=0; 
 	my $c_size; 
@@ -181,10 +182,10 @@ sub write_cluster_tabular
 	for (my $i=1; $i<=$num_clusts; $i++){
 		$pres++; 
 		my $start = $pres;
-		while ($pres < $#where and $where[$pres+1] == $where[$pres] + 1) { #next is successive serial number and haven't reached end of array
+		while ($pres < $#where and $where[$pres+1] == $where[$pres] + 1) { #next is successive serial number and haven't reached end of array 
 			$pres++; 
 		};
-		$c_size = $mm[$where[$pres]] - $mm[$where[$start]] + 1;
+		$c_size = abs($mm[$where[$pres]] - $mm[$where[$start]]) + 1; #added abs for plus-vs-minus alignment.
 		$clusters_span_woGaps += $c_size; 
 	}
 	

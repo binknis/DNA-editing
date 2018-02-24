@@ -10,8 +10,12 @@
 #example:  perl Tools/foreachExec_new.pl "echo ooo ccc fff sss" "org=Human|Orangutan,subfam=L1PBb," | less
 #Note: change Regexes in code to split by "|" and use 'eq' operator to decide if to skip a org/class/fam etc. Regexes cause problems when one org/class/fam/subfam is a substring of another
 use strict; 
+use FindBin;
+my $perlDir = "$FindBin::Bin/.."; # locate this script
+use lib "$FindBin::Bin/..";  # use the parent directory of analysis_scripts directory from where this is run
+use lib "$FindBin::Bin"; #because this file is in analysis_scripts, this includes that directory
 use getAll; 
-(my $cmd, my $flags) = @ARGV; 
+(my $dataDir, my $cmd, my $flags) = @ARGV; 
 
 
 my $org_regex, my $class_regex, my $family_regex, my $subfam_regex; 
@@ -22,7 +26,7 @@ if ($flags ne ""){
 	($subfam_regex) = $flags =~ /subfam=([^,]+),/;
 }
 
-my $orgList = getAll::organisms(); 
+my $orgList = getAll::organisms($dataDir); 
 die "get orgList failed\n" unless $orgList; 
 
 foreach my $org (@$orgList){
@@ -33,7 +37,7 @@ foreach my $org (@$orgList){
 	my $cmd_with_org = $cmd; 
 	$cmd_with_org =~ s/ooo/$org/g; 
 	
-	my $classList = getAll::classes($org); 
+	my $classList = getAll::classes($dataDir, $org); 
 	die "get classList for $org failed\n" unless $classList; 
 	
 	foreach my $class (@$classList){
@@ -43,7 +47,7 @@ foreach my $org (@$orgList){
 		my $cmd_with_class = $cmd_with_org; 
 		$cmd_with_class =~ s/ccc/$class/g; 
 		
-		my $famList = getAll::families($org, $class); 
+		my $famList = getAll::families($dataDir, $org, $class); 
 			die "get famList for $org $class failed\n" unless $famList; 
 			
 			foreach my $family (@$famList){
@@ -54,7 +58,7 @@ foreach my $org (@$orgList){
 				$cmd_with_fam =~ s/fff/$family/g; 
 				
 				###insert here : get names, move system command to here. add last for nnn
-				my $subfamList = getAll::names($org, $class, $family); 
+				my $subfamList = getAll::names($dataDir, $org, $class, $family); 
 				die "get subfamList for $org $class $family failed\n" unless $subfamList; 
 				foreach my $subfam (@$subfamList){
 					# print "here for $org $class $family $subfam\n"; 

@@ -52,10 +52,7 @@ sub getNucFrequencyPerPos{
 	if ($reverse_editing){ #change edited nucs back to pre-editing nuc
 		$sequence = revEditing($sequence, $site_ref, $reverse_editing); 
 	}
-	else{ #don't reverse editing
-		$sequence = lc $sequence;
-	}
-	my @seq = split('',$sequence);
+	my @seq = split('', lc $sequence);
 	
 	#init variables
 	my @nucs = ('a', 'c', 'g', 't'); 
@@ -108,7 +105,7 @@ sub getNucFrequencyPerPos{
 #		4. normalize = flag: 0- return frequencies, 1- return fractions of each nuc in each pos
 #		5. reverse_editing = if to reverse editing sites (e.g. "ga" will reverse 'a' back to 'g')
 #		5. outfile = output file for frequencies (if not specified - prints to stdout; if "none" - doesn't print to file)
-#		6. no_CpG = Don't count sites that have specific nucs in their proximity(CpG is just an example and typical usage)
+#		6. no_CpG = Don't count sites that have specific nucs in their proximity(CpG is just an example and typical usage) - see STRING format in getNucFrequencyPerPos
 #		7. freqPerSeqFile = File to print frequencies for every sequence to (will print only if specified)
 #Note: Fasta file and siteList file deflines must be identical!
 sub getNucFrequencyPerPosAllSeqs{
@@ -148,7 +145,7 @@ sub getNucFrequencyPerPosAllSeqs{
 		# print $id . "doesn't exist\n" unless exists $sites_r->{$id};
 		next unless exists $sites_r->{$id}; #skip sequences that aren't in editing list.
 		# print $id . "exists\n"; 
-		my $freqPerSeq = getNucFrequencyPerPos($s, $sites_r->{$id}, $range, 0, $reverse_editing); 
+		my $freqPerSeq = getNucFrequencyPerPos($s, $sites_r->{$id}, $range, 0, $reverse_editing, $no_CpG); 
 		$freqPerSeqAll{$id} = $freqPerSeq; #save count per each sequence for printing to per-seq file
 		# printFreqHash($freqPerSeq); #***temp
 		#sum frequencies 
@@ -804,9 +801,8 @@ sub getTripletsBG{
 #retVal: sequence as array-ref (default) or scalar with editing positions reversed
 sub revEditing {
 	(my $sequence, my $site_ref, my $pre_post, my $retAr) = @_;
-	$sequence = lc $sequence;
 	(my $pre_edit, my $post_edit) = split('', lc $pre_post);
-	my @seq = split('',$sequence);
+	my @seq = split('', lc $sequence);
 	foreach my $site (@$site_ref){
 		if ($seq[$site-1] ne $post_edit){ #error: 'edited' nuc isn't the correct nuc
 			print "Error: site should be \"$post_edit\" but isn't!\n"; 
@@ -851,7 +847,7 @@ sub nucsFromNucsList {
 	while (my $line = <NUCS>)
 	{ 
 		(my $name)  = ( $line =~ /^(\S+)\t/ );
-		(my @whichNucs) = ( $'    =~ /([actg])/g );
+		(my @whichNucs) = ( $'    =~ /([actgACTG])/g );
 		unless ($fullDeflineKeys){ #extract coords from name
 			($name) = $name =~ /([^=]+:\d+-\d+[+-])/; 
 		}
@@ -1072,9 +1068,13 @@ sub blast3base {
 	my $log = $path . "makeblastdb.log.".$$.".txt"; #temp log file just to suppress output
 	system("makeblastdb -in $tsFa -dbtype nucl -logfile $log");
 	my $blastComm = "blastn -query $tqFa -db $tsFa -out $blastOut -strand plus -dust no -num_threads $numThreads -outfmt $outfmt"; 
-	$blastComm .= " -max_target_seqs $maxTargets" if $maxTargets; 
+	if ($maxTargets > 4){
+		# print "blast3base: adding max_targets_seqs\n"; #***
+		$blastComm .= " -max_target_seqs $maxTargets";
+	} elsif ($maxTargets and $maxTargets <= 4) {
+		$blastComm .= " -num_alignments $maxTargets -num_descriptions $maxTargets";
+	}
 	system($blastComm); #-max_target_seqs 1
-	
 	#del temp files
 	unlink ($tqFa); 
 	unlink ($tsFa); 
@@ -1167,12 +1167,12 @@ sub getEditedPositionsInCons {
 	(my $org, my $class, my $family, my $pval, my $th, my $control) = $suffix =~ /([^_]+)_([^_]+)_(\S+)_([^_]+)_([^_]+)(_control)?/; #needed only for class and family to access consensus file
 	
 	# my $rmskDir = "/home/alu/binknis/binknis_data/RepBase/ConsForMapping_18_8_13"; #CONST
-	print "consRoot 1: ". $consRoot ."\n"; #***
+	# print "consRoot 1: ". $consRoot ."\n"; #***
 	if(not $consRoot){ 
 		$consRoot = "/home/alu/binknis/binknis_data/RepBase/ConsForMapping_12_1_14"; #CONST
-		print "consRoot 2: ". $consRoot ."\n"; #***
+		# print "consRoot 2: ". $consRoot ."\n"; #***
 	} 
-	print "consRoot 3: ". $consRoot ."\n"; exit; #***
+	# print "consRoot 3: ". $consRoot ."\n"; exit; #***
 	
 	### Create sequence files for each subfamily (G/A specific) and get subfamily names ###
 	my $seqFile = "seqFasta_".$GA."_".$suffix.".fa";
@@ -1190,9 +1190,11 @@ sub getEditedPositionsInCons {
 		$multiConsFileForMapping = $consFileAll; 
 	} elsif (-e $consRoot ."/". "All" .".fa"){ #Alternative name for all seq file
 		$multiConsFileForMapping = $consRoot ."/". $class .".fa"; 
+	} else { #None of the above file were present
+		warn "Warning from getEditedPositionsInCons: won't be able to map due to missing multiConsFileForMapping.\n";
 	}
 	my $mostSimilarCons = getMostSimilarConsPerSubfam($subfamDir, $subfams, $GA, $multiConsFileForMapping, $cores);
-	print Dumper($mostSimilarCons); exit; #*** 			
+	# print Dumper($mostSimilarCons); exit; #*** 			
 	### BLAST against the consensus sequence and create histogram of positions in consensus and list of nucleotides each element was mapped to ### 
 	my %nucInConsList = (); 
 	my $posConsFile = $dir ."/posCons_".$GA."_".$suffix.".txt";
@@ -1203,7 +1205,7 @@ sub getEditedPositionsInCons {
 		$rmskDir .= "/" . "perSeq";  
 	} else {
 		print "Error in analysisSubs::getEditedPositionsInCons - unexpected rmskDir hierarchy\n"; 
-		print "rmskDir: " . $rmskDir ."\n"; #***
+		# print "rmskDir: " . $rmskDir ."\n"; #***
 	}
 	
 	open (POSCONS, ">$posConsFile") or die "$posConsFile didn't open\n";  
@@ -1213,7 +1215,7 @@ sub getEditedPositionsInCons {
 	open (MAPPED, ">$mappedFile") or die "$mappedFile didn't open\n";
 	foreach my $subfam (@$subfams){
 		### run blast ###
-		$subfam =~ s/\/|=/_/; #these characters shouldn't exist in cons file names (preprocessing removed it in )
+		$subfam =~ s/[\/\|=]/_/g; #these characters shouldn't exist in cons file names (preprocessing removed it in )
 		my $repbaseFile = $rmskDir ."/". $subfam.".fa"; #set direct file
 		#if direct file doesn't exist - use most similar sequence based on blast search against class
 		if (not -e $repbaseFile or $alwaysUseMostSimilarConsensus){ #construct repbase filename based on blast result
@@ -1247,11 +1249,13 @@ sub getEditedPositionsInCons {
 			unlink $blastOutFile if -e $blastOutFile; #erase old file because runBlast.pl concatenates
 			#system("perl516 Tools/runBlast.pl $editedFile $repbaseFile $blastOutFile blastn 4 1e-10 1"); #cores=4, pval=1e-20, -S=1 (only + strand)
 			#system("perl516 Tools/runBlast.pl $editedFile $repbaseFile $blastOutFile blastn 4 1e-2 1"); #cores=4, pval=1e-2, -S=1 (only + strand)
-			my $blastPval = "1e-20"; my $blastStrand = 1;
+			my $blastPval = "1e-20"; my $blastStrand = "plus";
 			unless(-e $repbaseFile . ".nhr"){ #run formatdb if index files don't exist (I previously pre-ran the formatdb)
-				system("formatdb -i $repbaseFile -p F -o T"); 
-			}
-			system("blastall -p blastn -i $editedFile -d $repbaseFile -e $blastPval -a $cores -S $blastStrand -F F -v 0 -W 6 > $blastOutFile"); 
+				# system("formatdb -i $repbaseFile -p F -o T"); 
+				system("makeblastdb -in $repbaseFile -dbtype nucl"); 
+			} 
+			# system("blastall -p blastn -i $editedFile -d $repbaseFile -e $blastPval -a $cores -S $blastStrand -F F -v 0 -W 6 > $blastOutFile"); 
+			system("blastn -query $editedFile -db $repbaseFile -strand $blastStrand -evalue $blastPval -dust no -num_threads $cores -word_size 6 -num_descriptions 1 -num_alignments 1 -out $blastOutFile"); 
 			# system("blastn -query $editedFile -subject $repbaseFile -out $blastOutFile -strand plus -dust no -culling_limit 1"); #blast only plus strand
 			
 			### parse and print results ###
@@ -1279,7 +1283,7 @@ sub getEditedPositionsInCons {
 	
 	##write which nuc in consensus each edited site was mapped to
 	my $nucListFile = $siteListFile; 
-	$nucListFile =~ s/siteList/nucList/;
+	$nucListFile =~ s/siteList/nucListInCons/;
 	open (NUCLIST, ">$nucListFile") or die "$nucListFile didn't open\n";
 	foreach my $subfam(sort keys %nucInConsList){
 		foreach my $seq(sort keys %{$nucInConsList{$subfam}}){
@@ -1305,7 +1309,7 @@ sub splitFastaBySubfam{
 	while ( my $seq = $inseq->next_seq ){
 		my $id = $seq->display_id(); 
 		(my $subfam) = $id =~ /=([^=]+)$/; #get subfam
-		
+		$subfam =~ s/[\/\|=]/_/g; #these characters shouldn't exist in subfam (preprocessing should remove it)
 		if (not exists $outStreams{$subfam}){
 			$outStreams{$subfam} = Bio::SeqIO->new( -file => ">".$subfamDir."/seqFasta_".$GA."_".$subfam.".fa",  -format => 'fasta' );
 		}
@@ -1328,8 +1332,13 @@ sub getMostSimilarConsPerSubfam{
 		#Only the best db sequence is shown for each query (-b 1); but will work without this filter too
 		my $editedFile = $subfamDir ."/". "seqFasta_".$GA."_".$sf.".fa";
 		my $blastOutFile = $subfamDir ."/"."blastToClass_". $GA ."_". $sf .".tab"; 
-		my $blastPval = "1e-20"; my $blastStrand = 1;
-		system("blastall -p blastn -i $editedFile -d $multiConsFileForMapping -e $blastPval -a $cores -S $blastStrand -F F -v 0 -m 8 -b 1 > $blastOutFile"); 
+		my $blastPval = "1e-20"; my $blastStrand = "plus";
+		unless(-e $multiConsFileForMapping . ".nhr"){ #run formatdb if index files don't exist (I previously pre-ran the formatdb)
+			# system("formatdb -i $multiConsFileForMapping -p F -o T"); 
+			system("makeblastdb -in $multiConsFileForMapping -dbtype nucl"); 
+		} 
+		# system("blastall -p blastn -i $editedFile -d $multiConsFileForMapping -e $blastPval -a $cores -S $blastStrand -F F -v 0 -m 8 -b 1 > $blastOutFile"); 
+		system("blastn -query $editedFile -db $multiConsFileForMapping -strand $blastStrand -evalue $blastPval -dust no -num_threads $cores -outfmt 6 -max_target_seqs 1 -out $blastOutFile"); 
 		open (my $blast_fh, $blastOutFile) or die "open $blastOutFile\n"; 
 		my $prev=""; 
 		while(my $l = <$blast_fh>){
@@ -1490,7 +1499,7 @@ sub subfamFromID{
 sub writeSubfamHist{
 	(my $histFile ,my $subfamHist, my $consSeq) = @_; 
 	open( HIST, ">".$histFile ) or die "didn't open $histFile\n";
-	my @str = split( //, $consSeq->seq() );
+	my @str = split( //, lc $consSeq->seq() );
 	my %mapping = ('a'=>1,'c'=>2,'g'=>3,'t'=>4);
 	foreach my $i ( 0 .. $#str )
 	{
@@ -1532,7 +1541,7 @@ sub nucListToFreq {
 		my @initAr = (0) x 4; 
 		$nucFreq{$seq} = \@initAr;
 		foreach my $n (@{$nuc_ref->{$seq}}){
-			$nucFreq{$seq}[$map{$n}]++; 
+			$nucFreq{$seq}[$map{lc $n}]++; 
 			$total{$seq}++; 
 		}
 	}	
@@ -1554,21 +1563,30 @@ sub nucListToFreq {
 }
 
 #Function: create a Freq for source/target sequence for each pair 
-sub nucFreqPerPairs {
+#This is for nucListInCons (see getNucsListInSeqForPairs for nucListInSeq)
+#originally nucFreqPerPairs
+sub nucInConsFreqPerPairs {
 	(my $clustFile, my $SorT, my $GA) = @_; 
 	$GA = "G" unless $GA; 
 	
 	#Map sites to consNuc for all sites in source/target
 	(my $path, my $suffix) = $clustFile =~ /^(\S+)clusters_(\S+)\.tab$/; 
 	my $siteListFile = $path ."siteList_".$GA."_".$suffix.".txt"; 
+	# print $siteListFile ."\n"; #***
 	my $sl = sitesFromSiteList($siteListFile, 0);
-	my $nucListFile =  $path ."nucList_".$GA."_".$suffix.".txt";
+	# print "Printing Dumper for sl:\n"; #***
+	# print Dumper(\%{$sl}); #***
+	my $nucListFile =  $path ."nucListInCons_".$GA."_".$suffix.".txt";
 	my $nl = nucsFromNucsList($nucListFile, 0);
 	
 	#Get sites per pair
-	my $nucListPerPairFile =  $path ."nucListPerPair_".$GA."_".$suffix.".txt";
+	my $nucListPerPairFile =  $nucListFile; #$path ."nucListPerPair_".$GA."_".$suffix.".txt";
+	$nucListPerPairFile =~ s/nucListInCons/nucListInConsPerPair/;
 	my %pn = (); #pair nucs
 	my $ps = getPairSites($clustFile, $SorT);
+	# print "GA is: $GA\n"; #***
+	# print "Printing Dumper for ps:\n"; #***
+	# print Dumper($ps); #***
 	
 	#get nucList for sites per pair only
 	foreach my $pair (sort keys %$ps){
@@ -1577,12 +1595,16 @@ sub nucFreqPerPairs {
 		my $i=0; #pair-sites index
 		my $j=0; #all seq-sites index
 		my @p_sites = @{$ps->{$pair}};
-		my @p_nucs = (); 
-		# print "p_sites: ", join(" ", @p_sites), "all_sites: ", join(" ", @{$sl->{$coords}}),"\n"; 
+		my @p_nucs = (); 	
+		# print "GA is: $GA\n"; #***
+		# print "coords: " . $coords . "\n"; #***
+		# print "coords , s, t: $coords , $s, $t\n"; #***
+		# print "what's in sl for s, t: $sl->{$s}, $sl->{$t}\n"; #***
+		# print "p_sites: ", join(" ", @p_sites), "all_sites: ", join(" ", @{$sl->{$coords}}),"\n"; #***
 		while($i <= $#p_sites){
 			while ($sl->{$coords}[$j] != $p_sites[$i]){
-				# print $sl->{$coords}[$j] ." ". $p_sites[$i] ."\n";
-				if ($j == scalar(@{$sl->{$coords}})) { die "error for $clustFile, passed array limits in nucFreqPerPairs\n";} #just for debugging, shouldn't happen
+				# print $sl->{$coords}[$j] ." ". $p_sites[$i] ."\n"; #***
+				if ($j == scalar(@{$sl->{$coords}})) { die "error for $clustFile, passed array limits in nucInConsFreqPerPairs\n";} #just for debugging, shouldn't happen
 				$j++; 
 			}
 			push(@p_nucs, $nl->{$coords}[$j]); 
@@ -1601,6 +1623,7 @@ sub nucFreqPerPairs {
 	#Create freq file per pairs
 	nucListToFreq($nucListPerPairFile);
 }
+
 
 #Function: getRedundantSiteList - same as sitesFromSiteList
 #SorT - sites in source or in target (source is defined as the first ) (0- source, 1- target)
@@ -1654,20 +1677,22 @@ sub getPairSites {
 	return \%ps; 
 }
 
-#Function: getNucsForPairs - get hash of nucleotides found in a position relative to each editing site in cluster-pairs
+#Function: nucInSeqFreqPerPairs - get hash of nucleotides found in a position relative to each editing site in cluster-pairs
 #Input: 
 #	1. tabClustFile - full path to tabular cluster file
 #	2. SorT - get nucs in source (0) or target (1); Source and Target nucs are defined in the subroutine
-#	3. 
+#	3. position - pos relative to edited nuc
 #	4. pairsFilterFile - file with pairs to retain (needed when working in a track directory which is after filtering)
 #						This file needs to be graph_ file from the Track directory.
-#***Modify for mismatches other than GA and CT [see (? : )]
 # Notes: 
 #	1. For filters you must specify the tabClustFile after filtering
-sub getNucsForPairs {
-	(my $tabClustFile, my $SorT, my $position, my $pairsFilterFile) = @_; 
-	my $sNuc = "G"; 
-	my $tNuc = "A"; 
+#originally: getNucsForPairs()
+sub nucInSeqFreqPerPairs {
+	# print "running nucInSeqFreqPerPairs\n"; #***
+	(my $tabClustFile, my $SorT, my $position, my $pairsFilterFile, my $mm) = @_; 
+	$mm = ($mm ? uc $mm : "GA"); 
+	(my $sNuc, my $tNuc) = split(//, $mm);
+	
 	my %pairNucs = ();
 	##get sites per pair
 	#get pairs if clusters should be filtered for a set of pairs (if pairsFilterFile with pairs to retain was specified)
@@ -1675,7 +1700,7 @@ sub getNucsForPairs {
 	if ($pairsFilterFile){
 		$pairsFromFilter = getPairs($pairsFilterFile);
 	}
-	my $pair_sites = getPairSites( $tabClustFile, $SorT); 
+	my $pair_sites = getPairSites( $tabClustFile, $SorT);
 	my %seq2ps = (); #hash{seq(source or target)}{pair}{sites-per-pair}
 	foreach my $p (keys %$pair_sites){
 		if ($pairsFilterFile){ #filter - if file with pairs to retain was specified
@@ -1692,33 +1717,29 @@ sub getNucsForPairs {
 		($path, $suffix) = $pairsFilterFile =~ /^(\S+\/)?graph(_[^\/]+)\.txt$/;
 	}
 	my $seqFile = $path ."seqFasta_". ($SorT ? $tNuc : $sNuc) . $suffix .".fa";
-	my $outFile = $path ."nucListPairs_" .($SorT ? $tNuc : $sNuc) ."_pos". $position. $suffix .".txt";
+	my $nlis_file = $path ."nucListInSeqPerPair_" .($SorT ? $tNuc : $sNuc) ."_pos". $position. $suffix .".txt"; #changed from nucListPairs
 	#fetch nucs from seqFile
-	open (OUT, ">".$outFile) || die "open $outFile\n"; 
+	open (OUT, ">".$nlis_file) || die "open $nlis_file\n"; 
 	my $inseq = Bio::SeqIO->new( -file => $seqFile, -format => 'fasta' );
 	while ( my $seq = $inseq->next_seq ){
 		(my $id) = $seq->id =~ /([^=]+:\d+-\d+[+-])/;
 		if (exists $seq2ps{$id}){ 
-			# print $id .":\n"; #***
 			foreach my $pair ( keys %{$seq2ps{$id}} ){
-				# print $pair ."\t"; #***
 				$pairNucs{$pair} = (); 
 				foreach my $site ( @{$seq2ps{$id}{$pair}} ){
 					my $wantedNuc = substr($seq->seq, $site-1+$position, 1); 
 					push ( @{$pairNucs{$pair}},  $wantedNuc); 
-					# print $wantedNuc ." "; #***
 				}
 				#print output per pair: 
 				my $outPair = $pair; 
 				$outPair =~ s/\t/,/; 
-				# ***my $tmpLen = scalar(@{$pairNucs{$pair}}); 
-				#***print OUT $pair ,"\t", "len: ",$tmpLen, "\n";
 				print OUT $outPair ,"\t", join (" ", @{$pairNucs{$pair}}), "\n";
 			}
 		}
 	}
 	close(OUT); 
-	return (\%pairNucs, $outFile); 
+	nucListToFreq($nlis_file); #create frequency file per pair 
+	return (\%pairNucs, $nlis_file); 
 }
 
 #Function(helper): uniq - Return sorted & unique elements in array 
@@ -1726,22 +1747,6 @@ sub uniq {
     return sort keys %{{ map { $_ => 1 } @_ }};
 }
 
-#Function: createConsensus - creates a consensus sequence from the sequences in a fasta file using MSA
-#*** To do 
-sub createConsensus{
-	(my $fastaFile) = @_; 
-	#***use some package that creates MSA and creates consensus from it.
-}
-
-#Function: - makeStarredAlign
-#*** To do 
-sub markEditingSitesInBLAST{
-	(my $blastFile, my $clusterFile) = @_; 
-	my $in = new Bio::SearchIO(-format => 'blast', -file   => $blastFile);
-	
-	# while 
-
-}
 
 ### Subroutine alignment_to_mm_arr ###
 #Function: parses an hsp and returns arrays of all the mismatches in the alignment 
@@ -1757,6 +1762,9 @@ sub alignment2mmArray{
 	my @q = split( //, lc $hsp->query_string );
 	my @s = split( //, lc $hsp->hit_string );
 	my $alignment = $hsp->homology_string;
+	
+	my $plusVsMinus = 0; 
+	$plusVsMinus = 1 if ( $hsp->strand('query') != $hsp->strand('hit') ); 
 	
 	#position hashes for query and subject sequences
 	my %mm_q = (); 
@@ -1775,6 +1783,7 @@ sub alignment2mmArray{
 	#position and counter init
 	my $q_start  = $hsp->start('query');
 	my $s_start  = $hsp->start('subject');
+	my $s_end  = $hsp->end('subject'); #needed if aligned to minus strand
 	my $mm_count = 0;
 	my $q_gaps   = 0;
 	my $s_gaps   = 0;
@@ -1783,7 +1792,12 @@ sub alignment2mmArray{
 	{
 		my $p = ( pos $alignment ) - 1; #pos function is 1-base, so needs to be decremented to fit $s and $q which are 0-base. 
 		if ( $q[$p] eq '-' ){ #gap in query
-			push(@{$s2gaps{$s[$p]}}, $s_start + $p - $s_gaps); #save nuc and position in subject that aligned to gap in query
+			
+			unless($plusVsMinus){ #same strand
+				push(@{$s2gaps{$s[$p]}}, $s_start + $p - $s_gaps); #save nuc and position in subject that aligned to gap in query
+			} else { #different strands (typically not allowed)
+				push(@{$s2gaps{$s[$p]}}, $s_end - $p + $s_gaps); #save nuc and position in subject that aligned to gap in query
+			}
 			$q_gaps++;
 		}
 		elsif ( $s[$p] eq '-' ){ #gap in sbjct
@@ -1792,7 +1806,11 @@ sub alignment2mmArray{
 		}
 		else{ #mismatch
 			push (@{ $mm_q{$q[$p]}{$s[$p]} } , $q_start + $p - $q_gaps); 
-			push (@{ $mm_s{$s[$p]}{$q[$p]} } , $s_start + $p - $s_gaps); 
+			unless($plusVsMinus){ #same strand
+				push (@{ $mm_s{$s[$p]}{$q[$p]} } , $s_start + $p - $s_gaps); 
+			} else { #different strands (typically not allowed)
+				push (@{ $mm_s{$s[$p]}{$q[$p]} } , $s_end - $p + $s_gaps); 
+			}
 			$mm_count++;
 			push (@{ $ind{$q[$p]}{$s[$p]} } , $mm_count); 
 		}
@@ -1813,10 +1831,11 @@ sub alignment2mmArray{
 #Explanation: spaces are tabs. 
 
 sub calcBlastMMfreqs{
-	(my $blastFile, my $outFile, my $coordsOut, my $append) = @_; 
-	print $blastFile ."\n";  #***
+	(my $blastFile, my $outPerHSPfile, my $outPerMMfile, my $coordsOut, my $append, my $addStartEndStrandFromHSP) = @_; #
+	# print $blastFile ."\n";  #***
 	my @nucs = qw/a c g t/;
 	my @mmOrder = qw/ga ct gc gt ca ta/;
+	$addStartEndStrandFromHSP = uc $addStartEndStrandFromHSP if $addStartEndStrandFromHSP; 
 	
 	#set input file
 	my $gzipped = ($blastFile =~ /\.gz$/ ? 1 : 0); 
@@ -1833,35 +1852,58 @@ sub calcBlastMMfreqs{
 	}
 	
 	#set output file handle
-	my $out_fh; 
-	if(not $outFile){ #defualt - use input file as prefix for output and add ".mmFreqs.txt"
-		$outFile = $blastFile .".mmFreqs.txt" unless ($outFile); 
-		open ($out_fh, ">" . ($append ? ">" : "") . $outFile) or die "open $outFile\n";
+	my $out_fh; my $outPerMM_fh; 
+	if(not $outPerHSPfile){ #defualt - use input file as prefix for output and add ".mmFreqs.txt"
+		$outPerHSPfile = $blastFile .".mmFreqsPerHSP.txt" unless ($outPerHSPfile); 
+		open ($out_fh, ">" . ($append ? ">" : "") . $outPerHSPfile) or die "open $outPerHSPfile\n";
+		
+		$outPerMMfile = $blastFile .".mmByPos.txt" unless ($outPerMMfile); 
+		open ($outPerMM_fh, ">" . ($append ? ">" : "") . $outPerMMfile) or die "open $outPerMMfile\n";
 	}
-	elsif ($outFile eq 'STDOUT'){  #write to stdout
+	elsif ($outPerHSPfile eq 'STDOUT'){  #write to stdout
 		$out_fh = \*STDOUT; 
+		$outPerMM_fh = \*STDOUT; 
 	}
 	else{ #write to specified file
-		open ($out_fh, ">" . ($append ? ">" : "") . $outFile) or die "open $outFile\n";
+		open ($out_fh, ">" . ($append ? ">" : "") . $outPerHSPfile) or die "open $outPerHSPfile\n";
+		open ($outPerMM_fh, ">" . ($append ? ">" : "") . $outPerMMfile) or die "open $outPerMMfile\n";
 	}
 	
 	#read blast file
+	my $q_name; 
+	my $s_name; 
+	my $res_total=0; #***
+	my $hit_total=0; #***
+	my $hsp_total=0;  #***
 	while (my $result = $in->next_result){
+		$res_total++; 
 		while(my $hit = $result->next_hit){
 			my $hsp_count=0; 
+			$hit_total++; 
 			next if $result->query_name() eq $hit->name(); #skip alignments between sequence to itself
 			#set query and subject names for output
 			my $outNames; 
 			if ($coordsOut){
-				(my $qCoords) = $result->query_name() =~ /([^=|]+:\d+-\d+[+-])/;
-				(my $sCoords) = $hit->name() =~ /([^=|]+:\d+-\d+[+-])/;
-				$outNames = join("\t", $qCoords , $sCoords); 
+				$q_name = $result->query_name() =~ /([^=|]+:\d+-\d+[+-])/;
+				$s_name = $hit->name() =~ /([^=|]+:\d+-\d+[+-])/;
 			}
 			else{
-				$outNames = join("\t", $result->query_name() , $hit->name()); 
+				$q_name = $result->query_name();
+				$s_name = $hit->name();
 			}
 			#get and write mismatch array and alignment stats to output
-			while(my $hsp = $hit->next_hsp){
+			while(my $hsp = $hit->next_hsp){	
+			$hsp_total++; 
+				if($addStartEndStrandFromHSP){ #add start, end, strand
+					if($addStartEndStrandFromHSP =~ /Q/){
+						$q_name .= ":" . $hsp->start('query') . "-" . $hsp->end('query') . ($hsp->strand('query') == 1 ? "+" : "-");
+					}
+					if($addStartEndStrandFromHSP =~ /S/){
+						$s_name .= ":" . $hsp->start('hit') . "-" . $hsp->end('hit') . ($hsp->strand('hit')  == 1 ? "+" : "-");
+					}
+					$outNames = join("\t", $q_name , $s_name); 
+				}
+			
 				$hsp_count++;
 				# print "HSP number $hsp_count\n"; #***
 				#parse alignment to mismatch arrays
@@ -1916,7 +1958,7 @@ sub calcBlastMMfreqs{
 				}
 				
 				#Build output
-				my $alignData = join (',', $hsp_count, $hsp->hsp_length, $hsp->evalue, $hsp->score, $totalMMs); 
+				my $alignData = join (',', $hsp_count, $hsp->start('query'), $hsp->end('query'), $hsp->start('hit'), $hsp->end('hit'), $hsp->hsp_length, $hsp->evalue, $hsp->score, $totalMMs); 
 				my $mmData = join ('|', @mmCount); 
 				my $gapStrQ = join('|', @gapCountQ); 
 				my $gapStrS = join('|', @gapCountS); 
@@ -1924,13 +1966,28 @@ sub calcBlastMMfreqs{
 				my $nucStrS = join('|', @ncCountS);
 				
 				print $out_fh join("\t", $outNames, $alignData, $mmData, $gapStrQ, $gapStrS, $nucStrQ, $nucStrS) , "\n";
+				for my $n1 (keys %{$mm_q_r}){
+					for my $n2 (keys %{$mm_q_r->{$n1}}){
+							my @qarr = @{$mm_q_r->{$n1}{$n2}}; 
+							my @sarr = @{$mm_s_r->{$n2}{$n1}}; 
+						for (my $i=0; $i<=$#qarr; $i++){
+							print $outPerMM_fh join("\t", $outNames, uc ($n1 . $n2),  $qarr[$i], $sarr[$i]) , "\n";
+						}
+					}
+				}
 			}
 		}
 	}
 	
-	if ($outFile ne 'STDOUT'){
+	print "Total results: $res_total, Total hits: $hit_total, Total hsp: $hsp_total\n"; #***
+	
+	if ($outPerHSPfile ne 'STDOUT'){
 		close($out_fh); 
 	}
+	if ($outPerMMfile ne 'STDOUT'){
+		close($outPerMM_fh); 
+	}
+	system("sort -k1,2 -k4,4n -o $outPerMMfile $outPerMMfile")
 }
 
 # wrapper for getBlastMMfreqs - for whole directory

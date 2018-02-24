@@ -28,7 +28,7 @@ foreach my $s (@serials){
 		getPairsByContext(@ARGV); 
 	}
 	elsif($s==7){
-		analysisSubs::getNucsForPairs(@ARGV); 
+		analysisSubs::getNucsListInSeqForPairs(@ARGV); 
 	}
 }
 

@@ -29,11 +29,12 @@ my $th_l = 4;
 my $th_h = 5;
 my $cores = 0; #if set, overrides num cores for ALL parallel parameters 
 my $allMMs = 1;
+my $directional = 0; #analyze all 12 types of mms (e.g. GA+AG separately and not only GA) # this depends on the blast of interest
 my $makeblastdb_path = ''; 
 my $blastn_path = ''; 
 my $useLegacyBlast = 0; 
 my $more_blast_cmdline_args = ''; #e.g.: "-num_alignments 100" to restrict number of alignments (can save time)
-my $blastEvalue = "1e-50"; 
+my $blastEvalue = "1e-20"; 
 my $useXMLforBlast = 0; #I read that XML BLAST output is more stable with different BioPerl releases than the text format. However, files are ~40% larger and parsing slower, hence disabled by default. 
 my $override_blasts = 0; #override existing blast outfiles
 my $num_parallel_blasts = 0; #set number of BLAST processes to run in parallel (see: $num_threads_blastn)
@@ -48,6 +49,7 @@ my @classes = ();
 	"th_l=i" => \$th_l,
 	"th_h=i" => \$th_h,
 	"allmms!" => \$allMMs,
+	"directional!" => \$directional,
 	
 	"makeblastdb_path=s" => \$makeblastdb_path,
 	"blastn_path=s" => \$blastn_path,
@@ -70,7 +72,7 @@ or die("Error in command line arguments\n");
  
  my %args = ();
 $args{"dataDir"} = $dataDir; $args{"pval_h"} = $pval_h; $args{"pval_l"} = $pval_l; $args{"th_l"} = $th_l; $args{"th_h"} = $th_h; $args{"allmms"} = $allMMs;
-$args{"num_parallel_analyze_blast"} = $num_parallel_analyze_blast; 
+$args{"num_parallel_analyze_blast"} = $num_parallel_analyze_blast; $args{"directional"} = $directional; 
  
 $args{"bioperl_blast_read_format"} = $useXMLforBlast ? "blastxml" : "blast"; #set blast parser arg for Bioperl
 
@@ -94,7 +96,12 @@ my $elapsedTime;
 my @start; 
 my @end; 
 
-my @mmDirs = ("GA", "CT", "GC", "GT", "CA", "TA"); #GA is equivalent of AG in this algorithm
+my @mmDirs; 
+unless($directional){
+	@mmDirs = ("GA", "CT", "GC", "GT", "CA", "TA"); #GA is equivalent of AG in this algorithm
+} else {
+	@mmDirs = ("GA", "CT", "GC", "GT", "CA", "TA", "AG", "TC", "CG", "TG", "AC", "AT"); #GA is equivalent of AG in this algorithm
+}
 
 #create progress_$organism file
 mkpath "Progress";
@@ -102,7 +109,6 @@ mkpath "Progress";
 
 #Read Class names from file 
 my $classDir = $dataDir. "/" . $organism; 
-print $classDir ."\n"; #***
 opendir(CLASSES, $classDir) || print "classdir didn't open\n";
 my @classList = sort{lc($a) cmp lc($b)}(readdir(CLASSES));
 shift(@classList) while ($classList[0] =~ /^\./); #erase "." and ".." links
@@ -315,7 +321,7 @@ sub runBlast{
 		if($useXMLforBlast){ #use XML output (else: default of text output)
 			$more_blast_cmdline_args .= " -outfmt 5"; 
 		}
-		$blastn_cmd = "$blastn_path -query $famDBdir/$name  -db $famDBdir/$name  -evalue $blastEvalue -strand plus -num_descriptions 0 -dust no -soft_masking false -num_threads $num_threads_blastn" . " " . $more_blast_cmdline_args . " | gzip > ". $blast_archive;
+		$blastn_cmd = "$blastn_path -query $famDBdir/$name  -db $famDBdir/$name  -evalue $blastEvalue ". ($directional ? "-strand plus" : "") . " -num_descriptions 0 -dust no -soft_masking false -num_threads $num_threads_blastn" . " " . $more_blast_cmdline_args . " | gzip > ". $blast_archive;
 		# print "1b. makeblastdb_cmd: $makeblastdb_cmd\n"; #***
 		# print "1b. blastn_cmd: $blastn_cmd\n"; #***
 	} 
